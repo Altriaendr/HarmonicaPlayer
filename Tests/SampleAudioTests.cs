@@ -11,12 +11,13 @@ static class SampleAudioTests
         {
             int[] offsets = { 0, 2, 4, 5, 7, 9, 11 };
             if (midi == 84) return "【【1】】";
+            if (midi == 85) return "【【#1】】";
             int octave = (midi - 48) / 12 - 1, semitone = (midi - 48) % 12;
             int degree = Array.FindLastIndex(offsets, x => x <= semitone);
             string body = (semitone == offsets[degree] ? "" : "#") + (degree + 1);
             return octave == -1 ? "（" + body + "）" : octave == 1 ? "【" + body + "】" : body;
         }
-        for (int midi = 48; midi <= 84; midi++)
+        for (int midi = HarmonicaPitchMap.Lowest; midi <= HarmonicaPitchMap.Highest; midi++)
         {
             var timeline = ScoreTimeline.Create(Note(midi) + ":8", "120", "20");
             var wave = AudioSynthesis.Render(timeline, 88200, 44100, 100);

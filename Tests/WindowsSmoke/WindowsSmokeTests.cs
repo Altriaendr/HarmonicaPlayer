@@ -25,15 +25,25 @@ public static class WindowsSmokeTests
                     PlayerWindow? window = null;
                     try
                     {
-                        window = new PlayerWindow(path, new TestScoreDialogs());
+                        window = new PlayerWindow(path, new TestScoreDialogs(), administrator: false);
                         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                         window.Closed += (_, _) => closed.TrySetResult();
                         window.Show();
                         await WaitUntil(() => window.IsLoaded, "window loaded");
+                        var defaultMode = Field<CheckBox>(window, "dry");
+                        if (defaultMode.IsChecked != false || !Field<Button>(window, "start").Content.ToString()!.StartsWith("开始演奏"))
+                            throw new Exception("Fresh startup must default to game performance.");
+                        if (!Field<TextBlock>(window, "alert").Text.StartsWith("权限提醒"))
+                            throw new Exception("Non-admin warning must be first.");
+                        var nativeController = Field<HotkeyController>(window, "hotkeys");
+                        if (nativeController.StopReady && !Field<Button>(window, "start").IsEnabled)
+                            throw new Exception("Non-admin warning blocked a valid score.");
+                        // Every scenario explicitly opts into dry mode before invoking Begin.
+                        defaultMode.IsChecked = true;
                         if (test == "error-recovery")
                         {
                             var editor = Descendants(window).OfType<TextBox>().Single(t => t.AcceptsReturn && !t.IsReadOnly);
-                            var startButton = Descendants(window).OfType<Button>().Single(b => b.Content?.ToString()?.StartsWith("开始 ") == true);
+                            var startButton = Descendants(window).OfType<Button>().Single(b => b.Content?.ToString()?.StartsWith("开始") == true);
                             var locate = Descendants(window).OfType<Button>().Single(b => b.Content?.ToString() == "定位曲谱错误");
                             editor.Text = "1\n8";
                             await WaitUntil(() => !startButton.IsEnabled && locate.IsEnabled, "invalid score displayed");
@@ -65,9 +75,10 @@ public static class WindowsSmokeTests
                         }
                         if (test is "countdown" or "playback")
                         {
-                            var dry = Descendants(window).OfType<CheckBox>().Single(c => c.Content?.ToString()?.StartsWith("仅日志测试") == true);
-                            if (dry.IsChecked != true) throw new Exception("Dry-run default is off.");
-                            var start = Descendants(window).OfType<Button>().Single(b => b.Content?.ToString()?.StartsWith("开始 ") == true);
+                            var dry = Descendants(window).OfType<CheckBox>().Single(c => c.Content?.ToString()?.StartsWith("仅测试") == true);
+                            dry.IsChecked = true;
+                            if (!Field<Button>(window, "start").Content.ToString()!.StartsWith("开始测试")) throw new Exception("Test label not updated.");
+                            var start = Descendants(window).OfType<Button>().Single(b => b.Content?.ToString()?.StartsWith("开始") == true);
                             start.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
                             await WaitUntil(() => test == "countdown"
                                 ? Field<TextBlock>(window, "status").Text.Contains("秒后开始")
@@ -84,7 +95,9 @@ public static class WindowsSmokeTests
                         if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
                     }
                 }
+                await MidiImportWindowTests();
                 await SettingsGenerationTests();
+                await PlaybackRestartTests();
                 await DocumentWindowTests();
                 await AudioWindowTests();
             }
@@ -112,6 +125,120 @@ public static class WindowsSmokeTests
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         window.Closed += (_, _) => closed.TrySetResult();
         window.Close(); await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+    private static async Task PlaybackRestartTests()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "HarmonicaRestart-" + Guid.NewGuid() + ".json");
+        var window = new PlayerWindow(path, new TestScoreDialogs(), administrator: false);
+        try
+        {
+            window.Show();
+            await WaitUntil(() => window.IsLoaded, "restart window loaded");
+            Field<TextBox>(window, "score").Text = "1:16 1:16 0";
+            Field<CheckBox>(window, "dry").IsChecked = true; // Explicit opt-in: tests must never send input.
+            void Stop() => Field<Button>(window, "stop").RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+
+            foreach (bool duringPlayback in new[] { false, true })
+            {
+                Task first = Invoke(window, "Begin", (uint)0);
+                await WaitUntil(() => duringPlayback
+                    ? Field<TextBox>(window, "log").Text.Length > 0
+                    : Field<TextBlock>(window, "status").Text.Contains("秒后开始"), "first run reached phase");
+                var active = Field<Task>(window, "running");
+                var cancellation = Field<CancellationTokenSource>(window, "cancellation");
+                CancellationToken oldToken = cancellation.Token;
+                for (int i = 0; i < 3; i++) await Invoke(window, "Begin", (uint)0);
+                if (!ReferenceEquals(active, Field<Task>(window, "running")) ||
+                    !ReferenceEquals(cancellation, Field<CancellationTokenSource>(window, "cancellation")))
+                    throw new Exception("Duplicate start replaced the active playback");
+                Stop();
+                // Cleanup has not yet resumed on the dispatcher: no new run may start here.
+                await Invoke(window, "Begin", (uint)0);
+                if (!ReferenceEquals(active, Field<Task>(window, "running")) || !oldToken.IsCancellationRequested)
+                    throw new Exception("Start during cancellation created another playback");
+                await first.WaitAsync(TimeSpan.FromSeconds(3));
+                if (Field<Task?>(window, "running") != null || Field<CancellationTokenSource?>(window, "cancellation") != null ||
+                    Field<bool>(window, "beginning") || Field<TextBox>(window, "score").IsReadOnly)
+                    throw new Exception("Stop did not finish cleanup and restore editing");
+
+                Task restarted = Invoke(window, "Begin", (uint)0);
+                await WaitUntil(() => Field<TextBlock>(window, "status").Text.Contains("秒后开始"), "restart countdown");
+                if (ReferenceEquals(cancellation, Field<CancellationTokenSource>(window, "cancellation")) ||
+                    Field<CancellationTokenSource>(window, "cancellation").IsCancellationRequested)
+                    throw new Exception("Restart reused cancelled state");
+                Stop(); await restarted.WaitAsync(TimeSpan.FromSeconds(3));
+                await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                if (Field<TextBox>(window, "log").Text.Length != 0 || Field<TextBlock>(window, "status").Text != "已停止。")
+                    throw new Exception("Old playback progress overwrote restarted state");
+            }
+            Console.WriteLine("PASS playback-restart: duplicate start, stop/restart during countdown and playback, stale progress");
+        }
+        finally
+        {
+            if (window.IsVisible) await CloseWindow(window);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+    private static async Task MidiImportWindowTests()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "HarmonicaMidiWindow-" + Guid.NewGuid());
+        Directory.CreateDirectory(folder);
+        string midiPath = Path.Combine(folder, "source.mid"), settingsPath = Path.Combine(folder, "settings.json");
+        var timeline = ScoreTimeline.Create("0:0.01 1 2 0_", "120", "20");
+        File.WriteAllBytes(midiPath, MidiExporter.Encode(timeline, "UI source"));
+        byte[] original = File.ReadAllBytes(midiPath);
+        var dialogs = new MidiWindowDialogs(midiPath);
+        var window = new PlayerWindow(settingsPath, dialogs, administrator: false);
+        try
+        {
+            window.Show(); await WaitUntil(() => window.IsLoaded, "MIDI window loaded");
+            string previousBody = Field<TextBox>(window, "score").Text;
+            dialogs.CancelConversion = true;
+            await Invoke(window, "ImportMidiAsync");
+            if (Field<TextBox>(window, "score").Text != previousBody) throw new Exception("Cancelled MIDI conversion changed editor");
+            dialogs.CancelConversion = false;
+            await Invoke(window, "ImportMidiAsync");
+            if (Field<TextBox>(window, "score").Text == previousBody || !window.Title.Contains("*") ||
+                Field<string?>(window, "documentPath") != null || Field<CheckBox>(window, "dry").IsChecked != false)
+                throw new Exception("Imported MIDI did not create an unsaved TXT document with independent mode");
+            if (!File.ReadAllBytes(midiPath).SequenceEqual(original)) throw new Exception("Source MIDI modified");
+            string imported = Field<TextBox>(window, "score").Text;
+            dialogs.UnsavedResult = MessageBoxResult.Cancel;
+            await Invoke(window, "ImportMidiAsync");
+            if (Field<TextBox>(window, "score").Text != imported) throw new Exception("Unsaved cancel lost MIDI document");
+            var file = MidiImporter.Parse(original);
+            var importDialog = new MidiImportDialog(file) { Owner = window };
+            try
+            {
+                importDialog.Show();
+                await WaitUntil(() => importDialog.IsLoaded, "MIDI conversion dialog loaded");
+                var accept = Descendants(importDialog).OfType<Button>().Single(b => b.Content?.ToString() == "导入到编辑器");
+                if (!accept.IsEnabled) throw new Exception("Compatible MIDI preview blocked");
+                var fields = Descendants(importDialog).OfType<TextBox>().Where(b => !b.IsReadOnly).ToArray();
+                fields.Single(b => b.Text == "0").Text = "127";
+                if (accept.IsEnabled) throw new Exception("Out-of-range transpose allowed import");
+            }
+            finally { if (importDialog.IsVisible) importDialog.Close(); }
+            Console.WriteLine("PASS MIDI-window: cancel, unsaved TXT, source preservation, mode, transpose block");
+        }
+        finally
+        {
+            dialogs.UnsavedResult = MessageBoxResult.No;
+            if (window.IsVisible) await CloseWindow(window);
+            Directory.Delete(folder, true);
+        }
+    }
+    private sealed class MidiWindowDialogs(string path) : IScoreDialogs
+    {
+        public bool CancelConversion;
+        public MessageBoxResult UnsavedResult = MessageBoxResult.No;
+        public string? Open(Window owner) => null;
+        public string? Save(Window owner, string suggestedName) => null;
+        public string? OpenMidi(Window owner) => path;
+        public MessageBoxResult Unsaved(Window owner) => UnsavedResult;
+        public ScoreDocument? ConvertMidi(Window owner, MidiImportFile file) =>
+            CancelConversion ? null : MidiImporter.Convert(file, file.Parts.Single(), 120, 10).Document;
+        public void PlaybackIssue(Window owner, string message) => throw new Exception("Unexpected runtime stop: " + message);
     }
     private static async Task SettingsGenerationTests()
     {
@@ -239,10 +366,17 @@ public static class WindowsSmokeTests
             await Invoke(window, "ExportMidiAsync");
             if (!window.Title.EndsWith(" *") || editor.IsReadOnly)
                 throw new Exception("Cancelled export changed editor");
+            var dryMode = Field<CheckBox>(window, "dry");
+            // Suspension bypasses the window's hotkey refresh. Exercise a real mode
+            // transition even when startup already defaults to game performance.
+            dryMode.IsChecked = true;
             Field<HotkeyController>(window, "hotkeys").Suspend();
-            Field<CheckBox>(window, "dry").IsChecked = false;
-            if (Field<Button>(window, "start").IsEnabled || !Field<Button>(window, "listen").IsEnabled)
-                throw new Exception("Local audio depends on game hotkey readiness");
+            dryMode.IsChecked = false;
+            if (Field<Button>(window, "start").IsEnabled)
+                throw new Exception("Game performance allowed without stop hotkey");
+            if (!Field<Button>(window, "listen").IsEnabled || !Field<Button>(window, "listenFromCursor").IsEnabled ||
+                !Field<Button>(window, "exportMidi").IsEnabled)
+                throw new Exception("Local audio or MIDI export depends on game hotkey readiness");
             var run = Invoke(window, "ListenAsync", true);
             await WaitUntil(() => fake.Active, "audio started");
             if (fake.StartIndex != 1 || !editor.IsReadOnly || Field<Button>(window,"exportMidi").IsEnabled ||
@@ -302,6 +436,7 @@ sealed class TestScoreDialogs : IScoreDialogs
     public string? Save(Window owner, string suggestedName) => SavePath;
     public MessageBoxResult Unsaved(Window owner) => Answer;
     public string? SaveMidi(Window owner, string suggestedName) => MidiPath;
+    public void PlaybackIssue(Window owner, string message) => throw new Exception("Unexpected playback stop: " + message);
 }
 
 sealed class FakeLocalAudio : ILocalAudioPlayer

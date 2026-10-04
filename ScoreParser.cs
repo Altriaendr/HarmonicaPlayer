@@ -91,7 +91,7 @@ public static class ScoreParser
                 {
                     if (c == '【' && closing == '】' && octave == 1 && i == opening + 1)
                     { octave = 2; nestedHigh = true; modifierAllowed = false; continue; }
-                    Error(i, "嵌套音区仅支持【【1】】（高两个八度的do）。");
+                    Error(i, "双层音区仅支持【【1】】和【【#1】】；不支持双层2～7或其他嵌套音区。");
                 }
                 if (sharpAt >= 0) Error(sharpAt, "请把#写在括号内音符之前，如【#6】。");
                 octave = c == '【' ? 1 : -1;
@@ -105,22 +105,28 @@ public static class ScoreParser
                 if (sharpAt >= 0) Error(sharpAt, "#后面缺少音符。");
                 if (nestedHigh)
                 {
-                    if (i != opening + 3 || text[opening + 2] != '1' || i + 1 >= text.Length || text[i + 1] != '】')
-                        Error(i, "最高音请完整写成【【1】】，时值放在括号外。");
+                    string inner = text[(opening + 2)..i];
+                    if (inner is not ("1" or "#1" or "＃1") || i + 1 >= text.Length || text[i + 1] != '】')
+                        Error(i, "请完整写成【【1】】或【【#1】】，时值放在双层括号外。");
                     i++; nestedHigh = false;
                 }
                 octave = 0;
                 closing = '\0';
             }
-            else if (c == '#')
+            else if (c is '#' or '＃')
             {
                 if (sharpAt >= 0) Error(i, "不支持连续#。");
                 sharpAt = i;
             }
             else if (c is >= '0' and <= '7')
             {
-                if (octave == 2 && (c != '1' || sharpAt >= 0 || i != opening + 2))
-                    Error(i, "最高音区仅支持【【1】】，暂不支持其他音或升半音。");
+                if (octave == 2)
+                {
+                    if (c is >= '2' and <= '7')
+                        Error(i, "不支持双层2～7（包括升半音）；双层音区仅支持【【1】】和【【#1】】。");
+                    if (c != '1' || i != opening + (sharpAt >= 0 ? 3 : 2))
+                        Error(i, "请完整写成【【1】】或【【#1】】，时值放在双层括号外。");
+                }
                 if (c == '0' && sharpAt >= 0) Error(i, "休止符不能升半音。");
                 notes.Add(new(c - '0', octave, sharpAt >= 0, i));
                 modifierAllowed = true; dotted = extended = explicitDuration = false; reductions = 0;

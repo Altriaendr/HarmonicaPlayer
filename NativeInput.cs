@@ -41,7 +41,6 @@ public sealed class NativeInput
 
     private readonly HashSet<ushort> keys = new();
     private readonly HashSet<int> buttons = new();
-    private static readonly ushort[] Scans = { 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32 };
     private static readonly uint[] DownFlags = { 0x0002, 0x0008, 0x0020 };
     private static readonly uint[] UpFlags = { 0x0004, 0x0010, 0x0040 };
 
@@ -60,15 +59,16 @@ public sealed class NativeInput
     });
     public void Modifiers(ScoreNote note)
     {
-        // 左低、右高、中升半音；高1直接使用逗号键。
-        if (note.Octave == -1) PressButton(0);
-        if (note.Octave == 2 || (note.Octave == 1 && note.Degree != 1)) PressButton(1);
-        if (note.Sharp) PressButton(2);
+        var plan = GameNoteInput.Create(note);
+        // Octave and semitone modifiers are independent; no release between them.
+        if (plan.Low) PressButton(0);
+        if (plan.High) PressButton(1);
+        if (plan.Sharp) PressButton(2);
     }
     private void PressButton(int button) { buttons.Add(button); Button(button, true); }
     public void NoteOn(ScoreNote note)
     {
-        ushort scan = note.Octave >= 1 && note.Degree == 1 ? (ushort)0x33 : Scans[note.Degree - 1];
+        ushort scan = GameNoteInput.Create(note).Scan;
         keys.Add(scan);
         Key(scan, true);
     }

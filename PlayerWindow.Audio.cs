@@ -39,7 +39,7 @@ public sealed partial class PlayerWindow
     {
         if (cancellation != null || closing || beginning || editingHotkeys || documentBusy) return;
         int selectionStart = score.SelectionStart, selectionLength = score.SelectionLength;
-        beginning = true; listening = true; SetBusy(true);
+        beginning = true; ++playbackGeneration; listening = true; SetBusy(true);
         operationIssue = null; UpdateAlert();
         try
         {
@@ -77,7 +77,7 @@ public sealed partial class PlayerWindow
         }
         catch (OperationCanceledException) { if (!closing) status.Text = "试听已停止，可继续编辑。"; }
         catch (FormatException) { cancellation?.Cancel(); cancellation?.Dispose(); cancellation = null; Preview(); status.Text = "无法试听，请查看顶部提示。"; }
-        catch (Exception e) { if (!closing) { status.Text = "试听失败，可修正后重试。"; ReportIssue(e.Message); } }
+        catch (Exception e) { if (!closing) { status.Text = "试听失败，可修正后重试。"; ReportIssue(e.Message, runtime: true); } }
         finally
         {
             cancellation?.Cancel(); cancellation?.Dispose(); cancellation = null;

@@ -1,6 +1,10 @@
 using HarmonicaPlayer;
 
 if (args.Contains("--gap-only")) { await GapDocumentTests.Run(); return; }
+if (args.Contains("--playback-timing-only")) { PlaybackTimingTests.Run(); PlaybackGuardTests.Run(); return; }
+if (args.Contains("--pitch-input-only")) { PitchInputTests.Run(); return; }
+if (args.Contains("--midi-import-only")) { MidiImportTests.Run(); return; }
+if (args.Length == 2 && args[0] == "--feedback-scores") { await PlaybackGuardTests.CheckFeedback(args[1]); return; }
 if (args.Contains("--sample-audio-only")) { SampleAudioTests.Run(); return; }
 
 if (args.Contains("--release-only")) { ReleaseAudioTests.Run(); return; }
@@ -148,7 +152,7 @@ Expect(customNotes[3].Octave == 2 && customNotes[4].Octave == 0, "最高do音区
 Expect(ScoreParser.Parse("【【1】】_.").Single().Beats == .75, "最高do兼容旧时值符号");
 Expect(ScoreParser.Parse("5:1.25 | 0:0.25 1:2.5").Sum(n => n.Beats) == 4, "自定义四拍时间线");
 Expect(ScoreParser.Parse("0:64").Single().Beats == 64, "支持64拍上限");
-foreach (string bad in new[] {"【【2】】", "【【#1】】", "【【1】", "【【11】】", "【【1_】】", "5:0", "5:-1", "5:65", "5:", "5:1.2.3", "5:1.", "5_:1.25", "5.:2", "5:1.25_", "5:1.25 —", "5:1:2", "5 | :1.25"})
+foreach (string bad in new[] {"【【2】】", "【【#2】】", "【【1】", "【【11】】", "【【1_】】", "5:0", "5:-1", "5:65", "5:", "5:1.2.3", "5:1.", "5_:1.25", "5.:2", "5:1.25_", "5:1.25 —", "5:1:2", "5 | :1.25"})
 {
     bool rejected = false;
     try { ScoreParser.Parse(bad); } catch (FormatException) { rejected = true; }
@@ -182,6 +186,10 @@ await AudioMidiTests.Run();
 SampleAudioTests.Run();
 ReleaseAudioTests.Run();
 ShortNoteAudioTests.Run();
+PlaybackTimingTests.Run();
+PlaybackGuardTests.Run();
+MidiImportTests.Run();
+PitchInputTests.Run();
 
 sealed class FakeHotkeys : IHotkeyBackend
 {

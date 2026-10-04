@@ -7,6 +7,13 @@ namespace HarmonicaPlayer;
 public interface IScoreDialogs
 {
     string? Open(Window owner);
+    string? OpenMidi(Window owner) => new ScoreDialogs().OpenMidi(owner);
+    ScoreDocument? ConvertMidi(Window owner, MidiImportFile file)
+    {
+        var dialog = new MidiImportDialog(file) { Owner = owner };
+        return dialog.ShowDialog() == true ? dialog.Document : null;
+    }
+    void PlaybackIssue(Window owner, string message) => MessageBox.Show(owner, message, "演奏已停止", MessageBoxButton.OK, MessageBoxImage.Warning);
     string? Save(Window owner, string suggestedName);
     MessageBoxResult Unsaved(Window owner);
     string? SaveMidi(Window owner, string suggestedName) => new ScoreDialogs().SaveMidi(owner, suggestedName);
@@ -17,6 +24,11 @@ public sealed class ScoreDialogs : IScoreDialogs
     public string? Open(Window owner)
     {
         var dialog = new OpenFileDialog { Filter = "TXT 简谱|*.txt" };
+        return dialog.ShowDialog(owner) == true ? dialog.FileName : null;
+    }
+    public string? OpenMidi(Window owner)
+    {
+        var dialog = new OpenFileDialog { Filter = "标准 MIDI 文件|*.mid;*.midi", CheckFileExists = true };
         return dialog.ShowDialog(owner) == true ? dialog.FileName : null;
     }
     public string? Save(Window owner, string suggestedName)
