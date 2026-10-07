@@ -3,7 +3,9 @@
     <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup><Compile Remove="WindowsSmoke/**/*.cs" /><Compile Include="../ScoreParser.cs" Link="ScoreParser.cs" /><Compile Include="../HotkeySettings.cs" Link="HotkeySettings.cs" /><Compile Include="../AppSettings.cs" Link="AppSettings.cs" /><Compile Include="../SettingsWriter.cs" Link="SettingsWriter.cs" /></ItemGroup>
+  <ItemGroup><Compile Remove="WindowsSmoke/**/*.cs" /><Compile Include="../ScoreParser.cs" Link="ScoreParser.cs" /><Compile Include="../HotkeySettings.cs" Link="HotkeySettings.cs" /><Compile Include="../AppSettings.cs" Link="AppSettings.cs" /><Compile Include="../ScoreLibrary.cs" Link="ScoreLibrary.cs" /><Compile Include="../SettingsWriter.cs" Link="SettingsWriter.cs" /></ItemGroup>
+  <!-- Loc.cs 是纯 .NET 的本地化表，核心模块（设置、校验）也用它，因此这里一并编译。 -->
+  <ItemGroup><Compile Include="../Loc.cs" Link="Loc.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../ScoreDocument.cs" Link="ScoreDocument.cs" /><Compile Include="../PlaybackValidation.cs" Link="PlaybackValidation.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../ScoreTimeline.cs" Link="ScoreTimeline.cs" /><Compile Include="../MidiExporter.cs" Link="MidiExporter.cs" /><Compile Include="../AudioSynthesis.cs" Link="AudioSynthesis.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../GamePlaybackTiming.cs" Link="GamePlaybackTiming.cs" /></ItemGroup>

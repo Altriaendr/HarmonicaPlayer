@@ -19,7 +19,7 @@ public sealed partial class PlayerWindow : Window
 {
     private readonly TextBox songTitle = new() { Text = "未命名曲谱" };
     private readonly TextBlock documentInfo = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly TextBlock documentWarning = new() { TextWrapping = TextWrapping.Wrap, Background = Brushes.LemonChiffon };
+    private readonly TextBlock documentWarning = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button saveScore = new() { Content = "保存 TXT", Margin = new Thickness(5) };
     private readonly Button saveAs = new() { Content = "另存为", Margin = new Thickness(5) };
     private readonly Button newScore = new() { Content = "新建", Margin = new Thickness(5) };
@@ -32,8 +32,9 @@ public sealed partial class PlayerWindow : Window
     private bool DocumentDirty => cleanDocument != (songTitle.Text, bpm.Text, score.Text, gap.Text);
     private void UpdateDocumentTitle()
     {
-        Title = $"口琴简谱播放器 0.4.0 — {songTitle.Text}{(DocumentDirty ? " *" : "")}";
-        documentInfo.Text = documentPath ?? "尚未保存";
+        // 标题栏与任务栏标题：产品名与版本号取单一来源（AppName / 程序集版本），不再手写常量。
+        Title = $"{AppName} {AppVersion} — {songTitle.Text}{(DocumentDirty ? " *" : "")}";
+        documentInfo.Text = documentPath ?? Loc.T("尚未保存");
     }
     private void MarkDocumentClean() { cleanDocument = (songTitle.Text, bpm.Text, score.Text, gap.Text); UpdateDocumentTitle(); }
     private readonly TextBox score = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Height = 230, Text = "1234567 【1234567】 （1234567） #1 #2 #4 #5 #6 111 000" };
@@ -59,8 +60,8 @@ public sealed partial class PlayerWindow : Window
     {
         bool blockedByHotkey = dry.IsChecked != true && hotkeys?.StopReady != true;
         start.IsEnabled = !uiBusy && scoreIssue == null && !blockedByHotkey;
-        startReason.Text = scoreIssue != null ? "无法开始：请先修正曲谱或速度、音符间隔。" :
-            blockedByHotkey ? "无法开始游戏演奏：请先修复停止快捷键。" : "";
+        startReason.Text = scoreIssue != null ? Loc.T("无法开始：请先修正曲谱或速度、音符间隔。") :
+            blockedByHotkey ? Loc.T("无法开始游戏演奏：请先修复停止快捷键。") : "";
         locateError.IsEnabled = !uiBusy && (errorPosition ?? operationErrorPosition) != null;
         listen.IsEnabled = listenFromCursor.IsEnabled = exportMidi.IsEnabled = !uiBusy && scoreIssue == null;
     }
@@ -84,6 +85,43 @@ public sealed partial class PlayerWindow : Window
     }
     private void ReportIssue(string message, int? position = null, bool runtime = false)
     { operationIssue = message; operationErrorPosition = position; operationIsRuntime = runtime; UpdateAlert(); }
+
+    private void ApplyThemeChoice()
+    {
+        var mode = themeChoice.SelectedIndex switch
+        {
+            1 => ThemeMode.Light,
+            2 => ThemeMode.Dark,
+            _ => ThemeMode.System
+        };
+        UiTheme.SetMode(mode);
+        settings = settings with { Theme = ThemePreference.Serialize(mode) };
+        // 与“自定义快捷键”一致：编码框里是半成品数字时，只保存上一份有效的速度/间隔。
+        _ = SaveCurrentSettingsAsync(true);
+    }
+
+    // 设置文件加载完成后按最终值对齐一次（预读可能因为文件损坏而回退成跟随系统）。
+    private void SyncThemeChoice()
+    {
+        themeChoiceReady = false;
+        themeChoice.SelectedIndex = (int)UiTheme.Mode;
+        themeChoiceReady = true;
+    }
+
+    // 右栏卡片：复用各 partial 里既有的控件与事件，只改变摆放位置，不改变行为。
+    private Border BuildListeningCard()
+    {
+        var body = new StackPanel();
+        AddListeningControls(body);
+        return CardPanel("本地试听（不发送游戏按键）", body);
+    }
+
+    private Border BuildHotkeyCard() =>
+        CardPanel("全局快捷键与设置", Block(
+            LHint("开始/停止键可自定义；修改期间会暂停全局快捷键，关闭此窗口后重新注册。"),
+            Row(configure, retry),
+            hotkeyStatus,
+            settingsStatus));
     private CancellationTokenSource? cancellation;
     private Task? running;
     public bool IsClosing => closing;
@@ -102,6 +140,8 @@ public sealed partial class PlayerWindow : Window
     private readonly Button configure = new() { Content = "自定义快捷键", Margin = new Thickness(5), Padding = new Thickness(10, 6, 10, 6) };
     private readonly Button retry = new() { Content = "重试注册", Margin = new Thickness(5), Padding = new Thickness(10, 6, 10, 6) };
     private readonly Button stop = new() { Content = "停止 F8", Margin = new Thickness(5), Padding = new Thickness(15, 6, 15, 6) };
+    private readonly ComboBox themeChoice = new() { Width = 132 };
+    private bool themeChoiceReady;
 
     public PlayerWindow(string? settingsFile = null, IScoreDialogs? dialogs = null, Action<AppSettings>? writeSettings = null, ILocalAudioPlayer? audioPlayer = null, bool? administrator = null)
     {
@@ -109,67 +149,35 @@ public sealed partial class PlayerWindow : Window
         scoreDialogs = dialogs ?? new ScoreDialogs();
         localAudio = audioPlayer ?? new LocalAudioPlayer();
         settingsPath = settingsFile ?? SettingsStore.DefaultPath;
-        Title = "口琴简谱播放器 0.4.0"; Width = 740; Height = 900; MinWidth = 600; MinHeight = 600;
-        var panel = new StackPanel { Margin = new Thickness(18) };
-        var root = new DockPanel { Margin = new Thickness(8) };
-        var fixedHeader = new StackPanel();
-        fixedHeader.Children.Add(modeStatus);
-        var alertPanel = new StackPanel();
-        alertPanel.Children.Add(alert);
-        var alertActions = new WrapPanel();
-        var fixHotkeys = new Button { Content = "修改快捷键", Margin = new Thickness(4) };
-        var retryHotkeys = new Button { Content = "重试注册", Margin = new Thickness(4) };
-        var dismissIssue = new Button { Content = "清除上次操作提示", Margin = new Thickness(4) };
-        fixHotkeys.Click += (_, _) => ConfigureHotkeys();
-        retryHotkeys.Click += (_, _) => ApplyHotkeys();
-        dismissIssue.Click += (_, _) => { operationIssue = null; UpdateAlert(); };
-        locateError.Click += (_, _) => LocateError();
-        alertActions.Children.Add(locateError);
-        alertActions.Children.Add(fixHotkeys); alertActions.Children.Add(retryHotkeys); alertActions.Children.Add(dismissIssue);
-        alertPanel.Children.Add(alertActions); alertBox.Child = alertPanel;
-        fixedHeader.Children.Add(alertBox);
-        status.FontSize = 19; status.FontWeight = FontWeights.Bold;
-        status.Margin = new Thickness(12, 4, 12, 8);
-        fixedHeader.Children.Add(status);
-        DockPanel.SetDock(fixedHeader, Dock.Top); root.Children.Add(fixedHeader);
-        root.Children.Add(new ScrollViewer { Content = panel }); Content = root;
-        panel.Children.Add(new TextBlock { Text = "TXT → 单音口琴演奏", FontSize = 23 });
-        panel.Children.Add(new TextBlock { Text = "【高音】 （低音） 【【1】】最高do、【【#1】】升半音；5:1.25指定总拍数；#或＃升半音；0休止，-或—延长一拍，_半拍，__四分之一拍，.附点。例：1 2_ 3_ 5 — | 0 6. 5_ 1 |", Margin = new Thickness(0, 10, 0, 10), TextWrapping = TextWrapping.Wrap });
-        var controls = new WrapPanel { Orientation = Orientation.Horizontal };
-        controls.Children.Add(import); controls.Children.Add(refresh); controls.Children.Add(start);
-        controls.Children.Add(stop); panel.Children.Add(controls); panel.Children.Add(startReason);
-        var fileControls = new WrapPanel();
-        fileControls.Children.Add(newScore); fileControls.Children.Add(saveScore); fileControls.Children.Add(saveAs); fileControls.Children.Add(importMidi);
-        panel.Children.Add(fileControls);
-        AddListeningControls(panel);
-        panel.Children.Add(new TextBlock { Text = "曲名（与文件名独立）：" });
-        panel.Children.Add(songTitle); panel.Children.Add(documentInfo); panel.Children.Add(documentWarning);
-        var shortcuts = new StackPanel { Orientation = Orientation.Horizontal };
-        shortcuts.Children.Add(configure); shortcuts.Children.Add(retry); panel.Children.Add(shortcuts);
-        panel.Children.Add(hotkeyStatus); panel.Children.Add(settingsStatus); panel.Children.Add(score);
-        // All scores use beat-based timing.
-        var tempo = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
-        tempo.Children.Add(new TextBlock { Text = "速度（BPM）：", VerticalAlignment = VerticalAlignment.Center });
-        tempo.Children.Add(bpm); panel.Children.Add(tempo);
-        panel.Children.Add(new TextBlock { Text = "解析预览（每个音的拍数和时间；不是图片识谱）", Margin = new Thickness(0, 8, 0, 4) });
-        panel.Children.Add(preview);
-        var timing = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-        
-        timing.Children.Add(new TextBlock { Text = "音符间隔／留白(ms)：", VerticalAlignment = VerticalAlignment.Center }); timing.Children.Add(gap);
-        panel.Children.Add(timing);
-        panel.Children.Add(dry);
-        panel.Children.Add(new TextBlock
-        {
-            Text = "游戏演奏模式会操作键鼠；仅测试不会操作游戏，也不会发声。开始后倒计时3秒，请切到游戏口琴界面；演奏期间除停止键外不要操作键鼠。",
-            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8)
-        });
-        panel.Children.Add(log);
+        Title = AppName + " " + AppVersion;
+        // 4:3 浮窗默认尺寸（1040×780）；仍可自由缩放，最小尺寸保证左右两栏都能完整放下。
+        Width = 1040; Height = 780; MinWidth = 880; MinHeight = 660;
+        // 主题与界面语言：先按设置文件里的偏好（只读预读，不改动原有加载顺序）选好调色板与文案再建资源，
+        // 否则窗口会先按浅色/中文绘制再跳一次。
+        UiTheme.SetMode(ThemePreference.Parse(SettingsStore.ReadTheme(settingsPath)));
+        Loc.SetLanguage(LanguagePreference.Parse(SettingsStore.ReadLanguage(settingsPath)));
+        // 外观与交互增强：统一主题样式、窗口内快捷键、拖放导入、曲谱字号缩放。
+        BuildThemeResources();
+        ApplyControlStyles();
+        InstallInteraction();
+        // 浮窗外壳：4:3 无边框浮窗（自绘标题栏）+ 顶栏状态区 + 选项卡内容区 + 底部播放条。
+        // 只重新摆放既有控件；演奏、热键、宏执行与配置读写逻辑均未改动。
+        SetupFloatingWindow();
+        BuildShell();
         settings = SettingsStore.Load(settingsPath, out var loadWarning);
         settingsWriter = new SettingsWriter(writeSettings ?? (value => SettingsStore.Save(settingsPath, value)),
             writeSettings == null && loadWarning == null && File.Exists(settingsPath) ? settings : null);
         bpm.Text = settings.Bpm.ToString(); gap.Text = settings.Gap.ToString();
         volumeSlider.Value = settings.PreviewVolume; localAudio.Volume = settings.PreviewVolume;
-        settingsStatus.Text = loadWarning ?? "设置会自动保存；每次启动默认游戏演奏模式，“仅测试”不勾选。";
+        settingsStatus.Text = loadWarning ?? Loc.T("设置会自动保存；每次启动默认游戏演奏模式，“仅测试”不勾选。");
+        // 设置已通过校验：按最终值再对齐一次主题与语言（预读失败时会回退成跟随系统/中文）。
+        UiTheme.SetMode(ThemePreference.Parse(settings.Theme));
+        Loc.SetLanguage(LanguagePreference.Parse(settings.Language));
+        SyncThemeChoice();
+        SyncLanguageChoice();
+        ApplyLanguageTexts();
+        InitializeLibrary();
+        RestoreWindowPlacement();
         saveTimer.Tick += async (_, _) => { saveTimer.Stop(); await SaveCurrentSettingsAsync(); };
         previewTimer.Tick += (_, _) => { previewTimer.Stop(); Preview(); };
         configure.Click += (_, _) => ConfigureHotkeys();
@@ -190,6 +198,10 @@ public sealed partial class PlayerWindow : Window
         gap.TextChanged += (_, _) => QueuePreview();
         foreach (var box in new[] { bpm, gap })
             box.TextChanged += (_, _) => QueueSave();
+        // 即时校验：速度/间隔非法时立刻标红并给出提示，不必等到点“开始”。
+        foreach (var box in new[] { bpm, gap })
+            box.TextChanged += (_, _) => MarkTimingFields();
+        MarkTimingFields();
         foreach (var box in new[] { songTitle, bpm, score, gap })
             box.TextChanged += (_, _) => UpdateDocumentTitle();
         MarkDocumentClean();
@@ -208,12 +220,13 @@ public sealed partial class PlayerWindow : Window
             if (allowClose) return;
             e.Cancel = true;
             if (closing) return;
-            if (documentBusy) { ReportIssue("正在读写曲谱，请完成后再关闭。"); return; }
+            if (documentBusy) { ReportIssue(Loc.T("正在读写曲谱，请完成后再关闭。")); return; }
             closing = true;
+            CaptureWindowPlacement();
             saveTimer.Stop(); previewTimer.Stop();
             cancellation?.Cancel(); // Cancel first; do not put disk I/O before it.
             SetBusy(true); stop.IsEnabled = false;
-            status.Text = "正在停止演奏并关闭…";
+            status.Text = Loc.T("正在停止演奏并关闭…");
             // Always leave the initial Closing event before calling Close again,
             // even when there is no playback task or every await completes inline.
             Dispatcher.BeginInvoke(DispatcherPriority.Normal,
@@ -228,27 +241,27 @@ public sealed partial class PlayerWindow : Window
             if (playback != null)
             {
                 if (await Task.WhenAny(playback, Task.Delay(1500)) != playback)
-                    status.Text = "正在等待演奏任务停止，窗口仍可响应…";
+                    status.Text = Loc.T("正在等待演奏任务停止，窗口仍可响应…");
                 try { await playback; }
-                catch (Exception e) { status.Text = "演奏结束异常：" + e.Message; }
+                catch (Exception e) { status.Text = Loc.T("演奏结束异常：") + e.Message; }
             }
             // No background note sender remains before final cleanup begins.
             string? releaseError = await Task.Run(output.Release);
             if (releaseError != null)
             {
                 // Do not silently exit with keys still held. A second close retries.
-                status.Text = "按键释放失败，请手动按下并松开相关键后再关闭：" + releaseError; ReportIssue(status.Text, runtime: true);
+                status.Text = Loc.T("按键释放失败，请手动按下并松开相关键后再关闭：") + releaseError; ReportIssue(status.Text, runtime: true);
                 return;
             }
-            if (!await ConfirmUnsavedAsync()) { status.Text = "已取消关闭。"; return; }
+            if (!await ConfirmUnsavedAsync()) { status.Text = Loc.T("已取消关闭。"); return; }
             Task save = SaveCurrentSettingsAsync(true);
             if (await Task.WhenAny(save, Task.Delay(1500)) != save)
-                status.Text = "正在保存最后的设置，请稍候（窗口仍可响应）…";
+                status.Text = Loc.T("正在保存最后的设置，请稍候（窗口仍可响应）…");
             await save;
             hotkeys?.Suspend(); source?.RemoveHook(Hook);
             allowClose = true; Close();
         }
-        catch (Exception e) { status.Text = "关闭未完成，请重试：" + e.Message; ReportIssue(status.Text); }
+        catch (Exception e) { status.Text = Loc.T("关闭未完成，请重试：") + e.Message; ReportIssue(status.Text); }
         finally
         {
             if (!allowClose)
@@ -277,6 +290,15 @@ public sealed partial class PlayerWindow : Window
                 key == settings.Start.Key && modifiers == settings.Start.Modifiers) _ = Begin(key);
             if (!editingHotkeys && w.ToInt32() == 2 && hotkeys?.StopReady == true &&
                 key == settings.Stop.Key && modifiers == settings.Stop.Modifiers) Stop();
+            // 曲谱库快捷键：编号与列表顺序一一对应；按键与当前设置不符时按旧注册丢弃。
+            int id = w.ToInt32();
+            if (!editingHotkeys && ScoreLibrary.IsLibraryHotkeyId(id) && hotkeys?.LibraryReady(id) == true)
+            {
+                int index = ScoreLibrary.IndexFromHotkeyId(id);
+                if (index >= 0 && index < settings.Library.Length && settings.Library[index].Hotkey is HotkeyBinding binding &&
+                    key == binding.Key && modifiers == binding.Modifiers)
+                    _ = LibraryActivateAsync(index, key, play: settings.LibraryHotkeyPlays);
+            }
             handled = true;
         }
         return IntPtr.Zero;
@@ -293,7 +315,7 @@ public sealed partial class PlayerWindow : Window
         AppSettings next = settings with { PreviewVolume = (int)volumeSlider.Value };
         string? invalid = null;
         if (!int.TryParse(bpm.Text, out int tempo) || !int.TryParse(gap.Text, out int silence))
-            invalid = "部分数值尚未填写完整，保留上次有效设置。";
+            invalid = Loc.T("部分数值尚未填写完整，保留上次有效设置。");
         else
         {
             var candidate = next with { Bpm = tempo, Gap = silence };
@@ -305,18 +327,19 @@ public sealed partial class PlayerWindow : Window
         settings = next; // Update the in-memory snapshot before asynchronous disk work.
         string? error = await settingsWriter.SaveAsync(next);
         if (generation != saveGeneration) return; // Never replace a newer edit/error's status.
-        settingsStatus.Text = error != null ? "设置未保存：" + error :
-            invalid ?? "设置已保存（快捷键、速度、音符间隔和试听音量）。";
+        settingsStatus.Text = error != null ? Loc.T("设置未保存：") + error :
+            invalid ?? Loc.T("设置已保存（快捷键、速度、音符间隔和试听音量）。");
     }
     private void ApplyHotkeys()
     {
         if (hotkeys == null || cancellation != null || closing || beginning || editingHotkeys || documentBusy) return;
-        hotkeys.Apply(settings.Start, settings.Stop);
-        UpdateMode(); stop.Content = "停止 " + settings.Stop.Label;
-        hotkeyStatus.Text = hotkeys.Describe(settings.Start, settings.Stop);
+        hotkeys.Apply(settings.Start, settings.Stop, LibraryHotkeyBindings());
+        UpdateMode(); stop.Content = Loc.T("停止 ") + settings.Stop.Label;
+        hotkeyStatus.Text = hotkeys.Describe(settings.Start, settings.Stop) + LibraryHotkeySummary();
         hotkeyIssue = hotkeys.StartReady && hotkeys.StopReady ? null :
-            hotkeyStatus.Text + "\n常见原因：其他播放器、录屏或键盘工具占用了热键。点击“自定义快捷键”换一个组合，或关闭占用程序后点“重试注册”。管理员权限不能解除热键占用。";
+            hotkeyStatus.Text + Loc.T("\n常见原因：其他播放器、录屏或键盘工具占用了热键。点击“自定义快捷键”换一个组合，或关闭占用程序后点“重试注册”。管理员权限不能解除热键占用。");
         UpdateAlert();
+        RefreshLibraryList(); // 状态列反映本次真实注册结果
     }
     private void ConfigureHotkeys()
     {
@@ -340,8 +363,8 @@ public sealed partial class PlayerWindow : Window
         {
             token.ThrowIfCancellationRequested();
             if (timeout.Elapsed.TotalSeconds > 15)
-                throw new InvalidOperationException("等待松开快捷键超时，已取消演奏。");
-            status.Text = $"请松开启动键及 Ctrl / Alt / Shift / Win；{settings.Stop.Label} 可停止。";
+                throw new InvalidOperationException(Loc.T("等待松开快捷键超时，已取消演奏。"));
+            status.Text = Loc.F("请松开启动键及 Ctrl / Alt / Shift / Win；{0} 可停止。", settings.Stop.Label);
             await Task.Delay(20, token);
         }
         token.ThrowIfCancellationRequested();
@@ -351,7 +374,7 @@ public sealed partial class PlayerWindow : Window
         if (cancellation != null || beginning || editingHotkeys || closing || documentBusy) return;
         documentBusy = true; SetBusy(true);
         try { await action(); }
-        catch (Exception e) { ReportIssue("曲谱操作失败：" + e.Message); }
+        catch (Exception e) { ReportIssue(Loc.T("曲谱操作失败：") + e.Message); }
         finally { documentBusy = false; SetBusy(false); }
     }
     private Task Import() => DocumentOperation(async () =>
@@ -365,7 +388,7 @@ public sealed partial class PlayerWindow : Window
         result = await ScoreDocumentReader.ReadAsync(path, fallback);
         ApplyDocument(result.Document);
         documentWarning.Text = string.Join("\n", result.Warnings);
-        status.Text = scoreIssue == null ? "已导入，检查通过；请确认速度（BPM）。" : "已导入，请修正顶部提示的错误。";
+        status.Text = scoreIssue == null ? Loc.T("已导入，检查通过；请确认速度（BPM）。") : Loc.T("已导入，请修正顶部提示的错误。");
         return true;
     });
     private void ApplyDocument(ScoreDocument document)
@@ -375,6 +398,7 @@ public sealed partial class PlayerWindow : Window
         songTitle.Text = document.Title; bpm.Text = document.Bpm.ToString(); score.Text = document.ScoreText;
         gap.Text = document.Gap.ToString();
         documentWarning.Text = ""; operationIssue = null; MarkDocumentClean(); Preview();
+        RefreshLibraryList(); // 曲谱库中标出当前加载的曲谱
     }
     private async Task<bool> ConfirmUnsavedAsync()
     {
@@ -405,22 +429,23 @@ public sealed partial class PlayerWindow : Window
             documentWarning.Text = string.Join("\n", ScoreDocumentReader.Parse(
                 ScoreDocumentWriter.Serialize(document, gap.Text), documentPath, document.Bpm).Warnings);
             MarkDocumentClean(); operationIssue = null; UpdateAlert();
-            status.Text = "曲谱已保存（新格式，含曲名、BPM和音符间隔）。";
+            status.Text = Loc.T("曲谱已保存（新格式，含曲名、BPM和音符间隔）。");
             return true;
         }
-        catch (Exception e) { ReportIssue("曲谱未保存：" + e.Message); return false; }
+        catch (Exception e) { ReportIssue(Loc.T("曲谱未保存：") + e.Message); return false; }
     }
     private void Stop()
     {
         if (closing) return; // Shutdown owns final input cleanup; do not race it.
         cancellation?.Cancel();
-        if (cancellation != null) status.Text = listening ? "正在停止试听…" : "正在停止并释放输入…";
-        else { var error = output.Release(); status.Text = error ?? "已停止。"; if (error != null) ReportIssue("释放按键失败：" + error, runtime: true); }
+        if (cancellation != null) status.Text = listening ? Loc.T("正在停止试听…") : Loc.T("正在停止并释放输入…");
+        else { var error = output.Release(); status.Text = error ?? Loc.T("已停止。"); if (error != null) ReportIssue(Loc.T("释放按键失败：") + error, runtime: true); }
     }
     private async Task Begin(uint triggerKey = 0)
     {
         if (cancellation != null || closing || beginning || editingHotkeys || documentBusy) return;
         beginning = true; ++playbackGeneration; SetBusy(true);
+        playbackProgress.Value = 0;
         operationIssue = null; UpdateAlert();
         try
         {
@@ -430,7 +455,7 @@ public sealed partial class PlayerWindow : Window
             scoreIssue = null; errorPosition = null; UpdateAlert();
             bool simulation = dry.IsChecked == true;
             if (!simulation && hotkeys?.StopReady != true)
-                throw new InvalidOperationException($"停止键 {settings.Stop.Label} 不可用，禁止真实演奏。请点击“自定义快捷键”或“重试注册”。");
+                throw new InvalidOperationException(Loc.F("停止键 {0} 不可用，禁止真实演奏。请点击“自定义快捷键”或“重试注册”。", settings.Stop.Label));
             cancellation = new CancellationTokenSource();
             if (closing || cancellation.IsCancellationRequested) return;
             _ = SaveCurrentSettingsAsync();
@@ -438,10 +463,10 @@ public sealed partial class PlayerWindow : Window
             running = Run(notes, ms, silence, simulation, triggerKey, cancellation.Token);
             await running;
         }
-        catch (FormatException) { Preview(); status.Text = "无法开始，请查看顶部提示。"; }
+        catch (FormatException) { Preview(); status.Text = Loc.T("无法开始，请查看顶部提示。"); }
         catch (Exception e)
         {
-            status.Text = "无法开始，请查看顶部提示。";
+            status.Text = Loc.T("无法开始，请查看顶部提示。");
             if (dry.IsChecked != true && hotkeys?.StopReady != true) UpdateAlert();
             else ReportIssue(e.Message);
         }
@@ -470,13 +495,14 @@ public sealed partial class PlayerWindow : Window
             foreach (var note in notes)
             {
                 if (lines.Length < 30000)
-                    lines.AppendLine($"{total / 1000:0.###}s  {note.Label}  {note.Beats:0.###}拍  ({note.Beats * ms:0.##}ms)");
+                    lines.AppendLine(Loc.F("{0:0.###}s  {1}  {2:0.###}拍  ({3:0.##}ms)", total / 1000, note.Label, note.Beats, note.Beats * ms));
                 total += note.Beats * ms;
             }
             scoreIssue = null; errorPosition = null; UpdateAlert();
-            preview.Text = $"共{notes.Count}个音/休止，{notes.Sum(n => n.Beats):0.###}拍，预计{total / 1000:0.###}秒（不含倒计时）\n" + lines;
+            preview.Text = Loc.F("共{0}个音/休止，{1:0.###}拍，预计{2:0.###}秒（不含倒计时）\n",
+                notes.Count, notes.Sum(n => n.Beats), total / 1000) + lines;
         }
-        catch (Exception e) { errorPosition = (e as ScoreFormatException)?.Position; scoreIssue = "谱面／设置错误：" + e.Message; preview.Text = scoreIssue; UpdateAlert(); }
+        catch (Exception e) { errorPosition = (e as ScoreFormatException)?.Position; scoreIssue = Loc.T("谱面／设置错误：") + e.Message; preview.Text = scoreIssue; UpdateAlert(); }
     }
     private void SetBusy(bool busy)
     {
@@ -488,11 +514,12 @@ public sealed partial class PlayerWindow : Window
         score.IsReadOnly = busy;
         songTitle.IsReadOnly = busy;
         saveScore.IsEnabled = saveAs.IsEnabled = newScore.IsEnabled = !busy;
+        ApplyLibraryBusy(busy);
         UpdateAlert();
     }
     private async Task Run(List<ScoreNote> notes, double ms, int silence, bool simulation, uint triggerKey, CancellationToken token)
     {
-        string result = simulation ? "测试完成：未操作游戏，也未发声。需要游戏演奏请取消“仅测试”。" : "演奏完成。";
+        string result = simulation ? Loc.T("测试完成：未操作游戏，也未发声。需要游戏演奏请取消“仅测试”。") : Loc.T("演奏完成。");
         bool failed = false;
         PlaybackTimingException? timingFailure = null;
         string playbackBody = score.Text;
@@ -501,13 +528,15 @@ public sealed partial class PlayerWindow : Window
         {
             await WaitForRelease(triggerKey, token);
             for (int n = 3; n > 0; n--)
-            { status.Text = $"{(!simulation && !administrator ? "权限提醒：未以管理员运行，允许继续。\n" : "")}{(simulation ? "仅测试" : "游戏演奏")}：{n}秒后开始，请切到目标窗口…"; await Task.Delay(1000, token); }
+            { status.Text = Loc.F("{0}{1}：{2}秒后开始，请切到目标窗口…",
+                (!simulation && !administrator ? Loc.T("权限提醒：未以管理员运行，允许继续。\n") : ""),
+                Loc.T(simulation ? "仅测试" : "游戏演奏"), n); await Task.Delay(1000, token); }
             // Check again after countdown: the user may have used Alt+Tab to switch windows.
             await WaitForRelease(triggerKey, token);
             var target = NativeInput.GetForegroundWindow();
             NativeInput.GetWindowThreadProcessId(target, out uint pid);
             if (!simulation && (target == IntPtr.Zero || pid == (uint)Environment.ProcessId))
-                throw new InvalidOperationException("倒计时结束时仍在播放器窗口，已取消。请在3秒倒计时内切到游戏口琴界面，或在游戏内按开始快捷键。");
+                throw new InvalidOperationException(Loc.T("倒计时结束时仍在播放器窗口，已取消。请在3秒倒计时内切到游戏口琴界面，或在游戏内按开始快捷键。"));
             await Task.Run(() =>
             {
                 var schedule = GamePlaybackTiming.Create(notes, ms, silence);
@@ -516,7 +545,7 @@ public sealed partial class PlayerWindow : Window
                 {
                     token.ThrowIfCancellationRequested();
                     if (!simulation && NativeInput.GetForegroundWindow() != target)
-                        throw new InvalidOperationException("目标窗口失去焦点，已停止。演奏期间请勿切换窗口；切回游戏后重新开始。");
+                        throw new InvalidOperationException(Loc.T("目标窗口失去焦点，已停止。演奏期间请勿切换窗口；切回游戏后重新开始。"));
                 }
                 void Wait(double until)
                 {
@@ -543,9 +572,15 @@ public sealed partial class PlayerWindow : Window
                     Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
                     {
                         if (closing || token.IsCancellationRequested) return;
-                        status.Text = $"{index + 1}/{notes.Count}：{note.Label} / {note.Beats:0.###}拍";
+                        // 进度条与进度文本必须在 UI 线程更新；旧任务不会覆盖新一次演奏的进度。
+                        if (playbackGeneration == generation)
+                        {
+                            playbackProgress.Value = notes.Count == 0 ? 100 : index * 100.0 / notes.Count;
+                            playbackPosition.Text = Loc.F("{0}/{1} 个音", index + 1, notes.Count);
+                        }
+                        status.Text = Loc.F("{0}/{1}：{2} / {3:0.###}拍", index + 1, notes.Count, note.Label, note.Beats);
                         if (log.LineCount > 150) log.Clear();
-                        log.AppendText($"{begin:0}ms  {note.Label}  {note.Beats:0.###}拍 ({noteMs:0.##}ms)\n"); log.ScrollToEnd();
+                        log.AppendText(Loc.F("{0:0}ms  {1}  {2:0.###}拍 ({3:0.##}ms)\n", begin, note.Label, note.Beats, noteMs)); log.ScrollToEnd();
                     }));
                     if (note.Degree != 0)
                     {
@@ -562,15 +597,17 @@ public sealed partial class PlayerWindow : Window
                 }
             }, token);
         }
-        catch (OperationCanceledException) { result = "已停止。"; }
-        catch (Exception e) { failed = true; timingFailure = e as PlaybackTimingException; result = "已停止：" + e.Message; }
+        catch (OperationCanceledException) { result = Loc.T("已停止。"); }
+        catch (Exception e) { failed = true; timingFailure = e as PlaybackTimingException; result = Loc.T("已停止：") + e.Message; }
         finally
         {
             // 工作任务已退出，再做最终释放，避免释放之后仍有旧任务按键。
             var error = simulation ? null : await Task.Run(output.Release);
             if (!closing)
             {
-                status.Text = error == null ? result : result + " 释放失败，请手动按下并松开相关键：" + error;
+                playbackProgress.Value = !failed && error == null && !token.IsCancellationRequested ? 100 : 0;
+                playbackPosition.Text = result;
+                status.Text = error == null ? result : result + Loc.T(" 释放失败，请手动按下并松开相关键：") + error;
                 if (failed || error != null) ReportIssue(status.Text, timingFailure?.Position, runtime: true);
                 if (timingFailure != null)
                 {

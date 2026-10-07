@@ -13,20 +13,22 @@ public sealed class HotkeyDialog : Window
     public HotkeyBinding Stop => stopEditor.Value;
     public HotkeyDialog(HotkeyBinding start, HotkeyBinding stop)
     {
-        Title = "自定义快捷键"; Width = 540; SizeToContent = SizeToContent.Height;
+        Title = Loc.T("自定义快捷键"); Width = 540; SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize; WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        // 与主窗口共用同一套主题：深色下对话框不能还是白底。
+        UiTheme.Apply(this);
         var panel = new StackPanel { Margin = new Thickness(18) }; Content = panel;
-        panel.Children.Add(new TextBlock { Text = "点击录入框后按下快捷键，或用下拉框和勾选项设置。\n修改期间暂停全局快捷键，关闭此窗口后重新注册。", TextWrapping = TextWrapping.Wrap });
-        startEditor = new BindingEditor("开始快捷键", start);
-        stopEditor = new BindingEditor("停止快捷键", stop);
+        panel.Children.Add(new TextBlock { Text = Loc.T("点击录入框后按下快捷键，或用下拉框和勾选项设置。\n修改期间暂停全局快捷键，关闭此窗口后重新注册。"), TextWrapping = TextWrapping.Wrap });
+        startEditor = new BindingEditor(Loc.T("开始快捷键"), start);
+        stopEditor = new BindingEditor(Loc.T("停止快捷键"), stop);
         panel.Children.Add(startEditor); panel.Children.Add(stopEditor);
-        panel.Children.Add(new TextBlock { Text = "停止建议使用容易按到的单键。F12、Win组合及演奏键Z/X/C/V/B/N/M/逗号不支持。", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 10) });
+        panel.Children.Add(new TextBlock { Text = Loc.T("停止建议使用容易按到的单键。F12、Win组合及演奏键Z/X/C/V/B/N/M/逗号不支持。"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 10) });
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
         panel.Children.Add(error);
         var row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var defaults = new Button { Content = "恢复 F6 / F8", Margin = new Thickness(4), Padding = new Thickness(10, 6, 10, 6) };
-        var save = new Button { Content = "应用并检查占用", Margin = new Thickness(4), Padding = new Thickness(10, 6, 10, 6) };
-        var cancel = new Button { Content = "取消", IsCancel = true, Margin = new Thickness(4), Padding = new Thickness(10, 6, 10, 6) };
+        var defaults = new Button { Content = Loc.T("恢复 F6 / F8"), Margin = new Thickness(4), Padding = new Thickness(10, 6, 10, 6) };
+        var save = new Button { Content = Loc.T("应用并检查占用"), Margin = new Thickness(4), Padding = new Thickness(10, 6, 10, 6) };
+        var cancel = new Button { Content = Loc.T("取消"), IsCancel = true, Margin = new Thickness(4), Padding = new Thickness(10, 6, 10, 6) };
         defaults.Click += (_, _) => { startEditor.Set(HotkeyBinding.DefaultStart); stopEditor.Set(HotkeyBinding.DefaultStop); error.Text = ""; };
         save.Click += (_, _) =>
         {
@@ -36,15 +38,16 @@ public sealed class HotkeyDialog : Window
         row.Children.Add(defaults); row.Children.Add(save); row.Children.Add(cancel); panel.Children.Add(row);
     }
 
-    private sealed class BindingEditor : StackPanel
+    // 复用同一个录入控件：单键绑定（曲谱库）与开始/停止成对绑定共用此编辑器。
+    internal sealed class BindingEditor : StackPanel
     {
         private sealed record Choice(uint Key, string Name);
         private readonly ComboBox key = new() { Width = 100, DisplayMemberPath = "Name" };
         private readonly CheckBox ctrl = new() { Content = "Ctrl", Margin = new Thickness(8, 0, 0, 0) };
         private readonly CheckBox alt = new() { Content = "Alt", Margin = new Thickness(8, 0, 0, 0) };
         private readonly CheckBox shift = new() { Content = "Shift", Margin = new Thickness(8, 0, 0, 0) };
-        private readonly TextBox capture = new() { IsReadOnly = true, Margin = new Thickness(0, 6, 0, 6), Padding = new Thickness(8) };
-        private readonly TextBlock hint = new() { TextWrapping = TextWrapping.Wrap };
+        private readonly TextBox capture = new() { IsReadOnly = true, Margin = new Thickness(0, 6, 0, 6), Padding = new Thickness(8), MinHeight = 34, FontWeight = FontWeights.SemiBold, VerticalContentAlignment = VerticalAlignment.Center };
+        private readonly TextBlock hint = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         public HotkeyBinding Value => new((key.SelectedItem as Choice)?.Key ?? 0,
             (ctrl.IsChecked == true ? 2u : 0u) | (alt.IsChecked == true ? 1u : 0u) | (shift.IsChecked == true ? 4u : 0u));
         public BindingEditor(string label, HotkeyBinding binding)
@@ -62,16 +65,22 @@ public sealed class HotkeyDialog : Window
             key.SelectionChanged += (_, _) => Refresh();
             foreach (var box in new[] { ctrl, alt, shift })
             { box.Checked += (_, _) => Refresh(); box.Unchecked += (_, _) => Refresh(); }
-            capture.GotKeyboardFocus += (_, _) => hint.Text = "现在按下快捷键；如被其他软件拦截，可使用下方选项。";
+            capture.GotKeyboardFocus += (_, _) =>
+            {
+                hint.Text = Loc.T("现在按下快捷键；如被其他软件拦截，可使用下方选项。");
+                Visual(recording: true, error: false);
+            };
+            capture.LostKeyboardFocus += (_, _) => Visual(recording: false, error: false);
             capture.PreviewKeyDown += (_, e) =>
             {
                 e.Handled = true;
                 var pressed = e.Key == Key.System ? e.SystemKey : e.Key;
                 if (pressed is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin) return;
                 var candidate = new HotkeyBinding((uint)KeyInterop.VirtualKeyFromKey(pressed), (uint)Keyboard.Modifiers);
-                if (candidate.Error() is string message) { hint.Text = message; return; }
-                Set(candidate); hint.Text = "已录入，点击“应用并检查占用”生效。";
+                if (candidate.Error() is string message) { hint.Text = message; Visual(recording: true, error: true); return; }
+                Set(candidate); hint.Text = Loc.T("已录入，点击“应用并检查占用”生效。"); Visual(recording: true, error: false);
             };
+            Visual(recording: false, error: false);
             Set(binding);
         }
         public void Set(HotkeyBinding value)
@@ -82,6 +91,16 @@ public sealed class HotkeyDialog : Window
             shift.IsChecked = (value.Modifiers & 4) != 0;
             Refresh();
         }
-        private void Refresh() { capture.Text = Value.Label; hint.Text = ""; }
+        private void Refresh() { capture.Text = Value.Label; hint.Text = ""; Visual(recording: false, error: false); }
+
+        // 录入框三态（纯视觉）：空闲 / 录制中（主色边框 + 主色浅底）/ 冲突（危险色边框与文字）。
+        // 判定逻辑仍然只有 HotkeyBinding.Error() 与 ValidatePair，本方法不参与任何校验。
+        private void Visual(bool recording, bool error)
+        {
+            capture.Background = UiTheme.Brush(recording ? UiTheme.AccentSoft : UiTheme.Panel);
+            capture.BorderBrush = UiTheme.Brush(error ? UiTheme.Danger : recording ? UiTheme.Accent : UiTheme.ControlBorder);
+            capture.BorderThickness = new Thickness(error || recording ? 2d : 1d);
+            hint.Foreground = UiTheme.Brush(error ? UiTheme.Danger : UiTheme.MutedText);
+        }
     }
 }

@@ -7,7 +7,9 @@ public static class SingleInstance
 {
     public static void Run()
     {
-        string scope = @"Local\HarmonicaPlayer." + WindowsIdentity.GetCurrent().User!.Value;
+        // 产品更名后的一次性设置迁移（只在正式启动路径执行，测试注入临时路径时不受影响）。
+        SettingsStore.MigrateLegacySettings();
+        string scope = @"Local\HarpKit." + WindowsIdentity.GetCurrent().User!.Value;
         using var mutex = new Mutex(false, scope + ".Mutex");
         bool owned;
         try { owned = mutex.WaitOne(0); } catch (AbandonedMutexException) { owned = true; }
@@ -19,7 +21,7 @@ public static class SingleInstance
                 try { using var signal = EventWaitHandle.OpenExisting(scope + ".Activate"); signal.Set(); return; }
                 catch (WaitHandleCannotBeOpenedException) { Thread.Sleep(50); }
             }
-            MessageBox.Show("播放器已经运行，请在任务栏中打开已有窗口。", "HarmonicaPlayer");
+            MessageBox.Show(Loc.T("播放器已经运行，请在任务栏中打开已有窗口。"), "HarpKit");
             return;
         }
         try

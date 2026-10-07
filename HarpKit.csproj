@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Version>0.4.0</Version>
+    <!-- 产品名：HarpKit（exe/任务栏/标题栏一致）；C# 命名空间保持 HarmonicaPlayer，避免无收益的全仓改名。 -->
+    <AssemblyName>HarpKit</AssemblyName>
+    <RootNamespace>HarmonicaPlayer</RootNamespace>
+    <Product>HarpKit</Product>
+    <AssemblyTitle>HarpKit</AssemblyTitle>
+    <Description>HarpKit：TXT 简谱 → 单音口琴自动演奏工具</Description>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- 图标几何来源见 Assets/Icon/harpkit.svg 与 UiIcon.cs；用 Tools/IconGen 重新生成。 -->
+    <ApplicationIcon>Assets\Icon\harpkit.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup><Compile Remove="Tests/**/*.cs" /></ItemGroup>
+  <ItemGroup><Compile Remove="Tools/**/*.cs" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Assets/Harmonica/*" LogicalName="HarmonicaSamples.%(Filename)%(Extension)" /></ItemGroup>
+</Project>

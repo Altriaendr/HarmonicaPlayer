@@ -3,6 +3,7 @@ using HarmonicaPlayer;
 if (args.Contains("--gap-only")) { await GapDocumentTests.Run(); return; }
 if (args.Contains("--playback-timing-only")) { PlaybackTimingTests.Run(); PlaybackGuardTests.Run(); return; }
 if (args.Contains("--pitch-input-only")) { PitchInputTests.Run(); return; }
+if (args.Contains("--score-library-only")) { ScoreLibraryTests.Run(); return; }
 if (args.Contains("--midi-import-only")) { MidiImportTests.Run(); return; }
 if (args.Length == 2 && args[0] == "--feedback-scores") { await PlaybackGuardTests.CheckFeedback(args[1]); return; }
 if (args.Contains("--sample-audio-only")) { SampleAudioTests.Run(); return; }
@@ -102,6 +103,68 @@ try
     Expect(SettingsStore.Load(settingsPath, out warning).Start == HotkeyBinding.DefaultStart && warning != null, "空快捷键安全回退");
 }
 finally { if (Directory.Exists(settingsDir)) Directory.Delete(settingsDir, true); }
+
+// 主题偏好（界面增量）：字符串归一化、未知值回退、设置文件往返与只读预读都不影响其他设置。
+Expect(ThemePreference.Parse(null) == ThemeMode.System && ThemePreference.Parse("") == ThemeMode.System, "主题缺省跟随系统");
+Expect(ThemePreference.Parse(" DARK ") == ThemeMode.Dark && ThemePreference.Parse("Light") == ThemeMode.Light, "主题忽略大小写与空白");
+Expect(ThemePreference.Parse("blue") == ThemeMode.System, "无法识别的主题值回退为跟随系统");
+Expect(ThemePreference.Serialize(ThemeMode.Light) == "light" && ThemePreference.Serialize(ThemeMode.System) == "system", "主题序列化");
+Expect(new AppSettings { Theme = "dark" } == new AppSettings { Theme = "Dark" }, "主题比较归一化大小写");
+Expect(new AppSettings { Theme = "dark" } != new AppSettings { Theme = "light" }, "主题改变会被判为有修改");
+string themeDir = Path.Combine(Path.GetTempPath(), "HarmonicaPlayerTheme-" + Guid.NewGuid().ToString("N"));
+string themePath = Path.Combine(themeDir, "settings.json");
+try
+{
+    SettingsStore.Save(themePath, new AppSettings { Theme = "dark" });
+    Expect(ThemePreference.Parse(SettingsStore.Load(themePath, out var themeWarning).Theme) == ThemeMode.Dark && themeWarning == null, "主题写入后可以读回");
+    Expect(SettingsStore.ReadTheme(themePath) == "dark", "只读预读返回主题值");
+    File.WriteAllText(themePath, "{bad json");
+    Expect(SettingsStore.ReadTheme(themePath) == null, "文件损坏时预读不抛出异常");
+    Expect(SettingsStore.Load(themePath, out var brokenTheme).Theme == null && brokenTheme != null, "损坏文件回退默认主题并告知");
+    File.WriteAllText(themePath, "{\"Theme\":\"striped\",\"Bpm\":95}");
+    Expect(SettingsStore.ReadTheme(themePath) == "striped", "预读原样返回未知主题值");
+    var unknown = SettingsStore.Load(themePath, out var unknownWarning);
+    Expect(unknownWarning == null && unknown.Bpm == 95 && ThemePreference.Parse(unknown.Theme) == ThemeMode.System, "未知主题不会让整份设置失效");
+}
+finally { if (Directory.Exists(themeDir)) Directory.Delete(themeDir, true); }
+
+// 界面语言（界面增量）：默认中文、非法值回退、词条回退、带参数模板、设置往返与只读预读。
+Expect(Loc.Current == UiLanguage.Chinese && Loc.T("保存 TXT") == "保存 TXT", "默认界面语言为中文");
+Expect(LanguagePreference.Parse(null) == UiLanguage.Chinese && LanguagePreference.Parse(" EN ") == UiLanguage.English, "语言取值忽略大小写与空白");
+Expect(LanguagePreference.Parse("fr") == UiLanguage.Chinese, "无法识别的语言值回退为中文");
+Expect(LanguagePreference.Serialize(UiLanguage.English) == "en" && LanguagePreference.Serialize(UiLanguage.Chinese) == "zh", "语言序列化");
+Expect(Loc.EntryCount > 150, "英文词条数量足以覆盖界面");
+Loc.SetLanguage(UiLanguage.English);
+try
+{
+    Expect(Loc.T("保存 TXT") == "Save TXT" && Loc.T("曲谱库") == "Score library", "英文表以中文原文为键");
+    Expect(Loc.T("这条文案故意没有翻译") == "这条文案故意没有翻译", "缺项回退中文而不是抛错");
+    Expect(Loc.F("曲谱库 {0} 个快捷键已就绪。", 2) == "2 library hotkey(s) ready.", "带参数的文案按英文模板格式化");
+    Expect(Loc.F("共{0}首，已绑定{1}个曲谱快捷键", 3, 2) == "3 score(s), 2 library hotkey(s) bound", "多参数文案格式化");
+    Expect(Loc.F("速度（BPM）范围20～300，请输入整数。") == "Tempo (BPM) must be an integer between 20 and 300.", "核心校验文案也已双语");
+}
+finally { Loc.Reset(); }
+Expect(Loc.T("保存 TXT") == "保存 TXT", "恢复中文后不影响后续检查");
+Expect(new AppSettings { Language = "en" } == new AppSettings { Language = "EN" }, "语言比较归一化大小写");
+Expect(new AppSettings { Language = "en" } != new AppSettings { Language = "zh" }, "切换语言会被判为有修改");
+string languageDir = Path.Combine(Path.GetTempPath(), "HarpKitLanguage-" + Guid.NewGuid().ToString("N"));
+string languagePath = Path.Combine(languageDir, "settings.json");
+try
+{
+    Directory.CreateDirectory(languageDir);
+    SettingsStore.Save(languagePath, new AppSettings { Language = "en" });
+    Expect(SettingsStore.ReadLanguage(languagePath) == "en", "只读预读返回语言值");
+    Expect(SettingsStore.Load(languagePath, out var languageWarning).Language == "en" && languageWarning == null, "语言写入后可以读回");
+    File.WriteAllText(languagePath, "{\"Language\":\"fr\",\"Bpm\":95}");
+    Expect(SettingsStore.ReadLanguage(languagePath) == "fr" && LanguagePreference.Parse("fr") == UiLanguage.Chinese, "未知语言不会让整份设置失效");
+    Expect(SettingsStore.Load(languagePath, out var unknownLanguage).Bpm == 95, "未知语言仍保留其他设置");
+}
+finally { if (Directory.Exists(languageDir)) Directory.Delete(languageDir, true); }
+
+// 产品更名：新的数据目录与旧目录迁移路径分开，且迁移函数不会覆盖已有设置文件。
+Expect(SettingsStore.DefaultPath.EndsWith(Path.Combine("HarpKit", "settings.json"), StringComparison.Ordinal), "数据目录随产品更名改为 HarpKit");
+Expect(SettingsStore.LegacyPath.EndsWith(Path.Combine("HarmonicaPlayer", "settings.json"), StringComparison.Ordinal), "保留旧数据目录用于一次性迁移");
+
 Console.WriteLine($"PASS TOTAL: {passed} tests (parser, hotkeys, settings)");
 
 // The settings writer must not perform a blocking disk action on the caller.
@@ -190,6 +253,7 @@ PlaybackTimingTests.Run();
 PlaybackGuardTests.Run();
 MidiImportTests.Run();
 PitchInputTests.Run();
+ScoreLibraryTests.Run();
 
 sealed class FakeHotkeys : IHotkeyBackend
 {

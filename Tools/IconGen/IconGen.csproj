@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    图标生成器：把 UiIcon.cs 里的矢量几何渲染成 Assets/Icon/harpkit.ico。
+    只在需要重建图标时运行，不参与主程序与测试的常规构建。
+    重建命令见 Tools/IconGen/README.md。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>IconGen</AssemblyName>
+    <RootNamespace>HarpKit.IconGen</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\UiIcon.cs" Link="UiIcon.cs" />
+  </ItemGroup>
+</Project>

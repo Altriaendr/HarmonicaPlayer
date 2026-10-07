@@ -61,7 +61,7 @@ public static class WindowsSmokeTests
                             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
                             var controller = (HotkeyController)typeof(PlayerWindow).GetField("hotkeys", flags)!.GetValue(window)!;
                             controller.Suspend();
-                            var dryBox = Descendants(window).OfType<CheckBox>().Single();
+                            var dryBox = Descendants(window).OfType<CheckBox>().Single(c => c.Content?.ToString()?.StartsWith("仅测试") == true);
                             dryBox.IsChecked = false;
                             if (startButton.IsEnabled) throw new Exception("Real playback allowed without stop hotkey.");
                             dryBox.IsChecked = true;
@@ -100,6 +100,8 @@ public static class WindowsSmokeTests
                 await PlaybackRestartTests();
                 await DocumentWindowTests();
                 await AudioWindowTests();
+                await LibraryWindowTests();
+                await ShellWindowTests();
             }
             catch (Exception e) { failures++; Console.Error.WriteLine(e); }
             finally { app.Shutdown(); }
@@ -109,6 +111,17 @@ public static class WindowsSmokeTests
     }
     private static T Field<T>(PlayerWindow window, string name) =>
         (T)typeof(PlayerWindow).GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(window)!;
+
+    // 诊断用：从控件向上打印可视父链的尺寸，便于定位“高度被压成 0”的位置。
+    private static string Chain(DependencyObject node)
+    {
+        var parts = new List<string>();
+        for (DependencyObject? current = node; current != null; current = System.Windows.Media.VisualTreeHelper.GetParent(current))
+            parts.Add(current is FrameworkElement element
+                ? $"{element.GetType().Name}({element.ActualWidth:0}x{element.ActualHeight:0})"
+                : current.GetType().Name);
+        return string.Join(" < ", parts);
+    }
     private static Task Invoke(PlayerWindow window, string name, params object[] args) =>
         (Task)typeof(PlayerWindow).GetMethod(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, args)!;
     private static async Task WaitUntil(Func<bool> predicate, string name)
@@ -125,6 +138,54 @@ public static class WindowsSmokeTests
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         window.Closed += (_, _) => closed.TrySetResult();
         window.Close(); await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    // 外壳验证：4:3 无边框浮窗、矢量图标、选项卡布局（曲谱库占满整列高度）与中英切换。
+    private static async Task ShellWindowTests()
+    {
+        if (!UiIcon.Validate()) throw new Exception("Icon geometry is invalid");
+        string path = Path.Combine(Path.GetTempPath(), "HarpKitShell-" + Guid.NewGuid() + ".json");
+        var window = new PlayerWindow(path, new TestScoreDialogs(), administrator: false);
+        try
+        {
+            window.Show();
+            await WaitUntil(() => window.IsLoaded, "shell window loaded");
+            if (window.WindowStyle != WindowStyle.None) throw new Exception("Floating window must be frameless");
+            if (Math.Abs(window.Width * 3 - window.Height * 4) > 0.5) throw new Exception("Default window is not 4:3");
+            if (window.Icon is null) throw new Exception("Window icon missing");
+            var tabs = Descendants(window).OfType<TabControl>().Single();
+            if (tabs.Items.Count != 3) throw new Exception("Shell must expose three tabs");
+            if (((TabItem)tabs.Items[0]!).Header is not TextBlock firstHeader || firstHeader.Text != "曲谱库")
+                throw new Exception("Score library must be the first tab");
+            // 曲谱库列表占满整列高度：不再出现“显示不全还得手动滚动才能绑快捷键”。
+            var list = Field<ListBox>(window, "libraryList");
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+            list.UpdateLayout();
+            if (list.ActualHeight < 200)
+                throw new Exception("Library list does not fill the column: " + list.ActualHeight +
+                    " | chain=" + Chain(list) + " | editor=" + Chain(Field<TextBox>(window, "score")));
+
+            var language = Field<ComboBox>(window, "languageChoice");
+            if (language.SelectedIndex != 0 || Field<Button>(window, "saveScore").Content.ToString() != "保存 TXT")
+                throw new Exception("Default language must be Chinese");
+            language.SelectedIndex = 1;
+            await WaitUntil(() => Field<Button>(window, "saveScore").Content.ToString() == "Save TXT", "English applied");
+            if (((TabItem)tabs.Items[0]!).Header is not TextBlock englishHeader || englishHeader.Text != "Score library")
+                throw new Exception("Tab header did not switch to English");
+            if (!Field<Button>(window, "start").Content.ToString()!.StartsWith("Start playing"))
+                throw new Exception("Start button did not switch to English");
+            await WaitUntil(() => SettingsStore.Load(path, out _).Language == "en", "language persisted");
+            language.SelectedIndex = 0;
+            await WaitUntil(() => Field<Button>(window, "saveScore").Content.ToString() == "保存 TXT", "Chinese restored");
+            if (!Field<Button>(window, "start").Content.ToString()!.StartsWith("开始演奏"))
+                throw new Exception("Start label was not restored to Chinese");
+            Console.WriteLine("PASS shell UI: 4:3 frameless window, icon, tabs, full-height library, language switch, persistence");
+        }
+        finally
+        {
+            if (window.IsVisible) await CloseWindow(window);
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
     private static async Task PlaybackRestartTests()
     {
@@ -417,6 +478,104 @@ public static class WindowsSmokeTests
         }
     }
 
+    // 曲谱库卡片：添加、绑定、冲突拦截、快捷键加载、演奏中锁定、移除、持久化。
+    private static async Task LibraryWindowTests()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "HarmonicaLibraryUI-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string settingsPath = Path.Combine(directory, "settings.json");
+        string firstScore = Path.Combine(directory, "小星星.txt");
+        string secondScore = Path.Combine(directory, "欢乐颂.txt");
+        await File.WriteAllTextAsync(firstScore, "1 2 3");
+        await File.WriteAllTextAsync(secondScore, "4 5 6");
+        var dialogs = new TestScoreDialogs { LibraryPaths = new[] { firstScore, secondScore } };
+        var window = new PlayerWindow(settingsPath, dialogs);
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        void Click(string button) => Field<Button>(window, button).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        void SetHotkey(HotkeyBinding? hotkey) => typeof(PlayerWindow)
+            .GetMethod("SetSelectedLibraryHotkey", flags)!.Invoke(window, new object?[] { hotkey });
+        try
+        {
+            window.Show();
+            await WaitUntil(() => window.IsLoaded, "library window loaded");
+            AppSettings Settings() => Field<AppSettings>(window, "settings");
+            if (Field<ListBox>(window, "libraryList").Items.Count != 1 || !Field<TextBlock>(window, "libraryStatus").Text.Contains("曲谱库为空"))
+                throw new Exception("Empty library card did not show its placeholder.");
+
+            Click("addLibrary");
+            await WaitUntil(() => Settings().Library.Length == 2, "library entries added");
+            if (Field<ListBox>(window, "libraryList").Items.Count != 2 ||
+                Settings().Library[0].Path != firstScore || Settings().Library[1].Path != secondScore)
+                throw new Exception("Added scores are missing or out of order.");
+
+            Field<ListBox>(window, "libraryList").SelectedIndex = 0;
+            SetHotkey(new HotkeyBinding(0x70));
+            var controller = Field<HotkeyController>(window, "hotkeys");
+            await WaitUntil(() => controller.LibraryReady(ScoreLibrary.HotkeyId(0)), "library hotkey registered");
+            if (Settings().Library[0].Hotkey != new HotkeyBinding(0x70) ||
+                !Field<TextBlock>(window, "status").Text.Contains("已绑定") ||
+                !Field<TextBlock>(window, "hotkeyStatus").Text.Contains("曲谱库 1 个快捷键已就绪"))
+                throw new Exception("Bound library hotkey was not saved, reported or summarised.");
+
+            // 与开始键相同的按键必须在写入设置前被挡下，否则下次启动会注册失败。
+            SetHotkey(Settings().Start);
+            if (Settings().Library[0].Hotkey != new HotkeyBinding(0x70) || !Field<TextBlock>(window, "alert").Text.Contains("开始键"))
+                throw new Exception("Conflicting library hotkey was not rejected.");
+
+            await Invoke(window, "LibraryActivateAsync", 0, (uint)0, false);
+            if (Field<TextBox>(window, "score").Text != "1 2 3" || Field<string?>(window, "documentPath") != firstScore)
+                throw new Exception("Library hotkey did not load the score into the editor.");
+
+            // “按快捷键立即演奏”开关：关掉只加载曲谱，打开则加载并演奏。
+            Field<CheckBox>(window, "libraryPlays").IsChecked = false;
+            if (Settings().LibraryHotkeyPlays || !Field<TextBlock>(window, "status").Text.Contains("只把曲谱加载到编辑器"))
+                throw new Exception("Turning the plays switch off was not applied.");
+            Field<CheckBox>(window, "libraryPlays").IsChecked = true;
+            if (!Settings().LibraryHotkeyPlays || !Field<TextBlock>(window, "status").Text.Contains("加载并演奏"))
+                throw new Exception("Turning the plays switch on was not applied.");
+
+            // 演奏/起奏期间禁止改库，避免保存出“未注册生效”的绑定。
+            var running = Field<CancellationTokenSource?>(window, "cancellation");
+            using var blocked = new CancellationTokenSource();
+            typeof(PlayerWindow).GetField("cancellation", flags)!.SetValue(window, blocked);
+            try
+            {
+                Click("removeLibrary");
+                if (Settings().Library.Length != 2 || !Field<TextBlock>(window, "status").Text.Contains("正在演奏"))
+                    throw new Exception("Library edit during playback was not blocked.");
+            }
+            finally { typeof(PlayerWindow).GetField("cancellation", flags)!.SetValue(window, running); }
+
+            Field<ListBox>(window, "libraryList").SelectedIndex = 1;
+            Click("removeLibrary");
+            await WaitUntil(() => Settings().Library.Length == 1, "library entry removed");
+            if (!File.Exists(secondScore) || Field<TextBox>(window, "score").Text != "1 2 3")
+                throw new Exception("Removing a library entry touched the file or the editor.");
+
+            // 快捷键路径带 play 时应进入倒计时（用“仅测试”模式，避免真的发按键）。
+            // “立即演奏”开关保持打开，最后一起检查它是否随窗口关闭写入设置文件。
+            Field<CheckBox>(window, "dry").IsChecked = true;
+            var playByHotkey = (Task)typeof(PlayerWindow)
+                .GetMethod("LibraryActivateAsync", flags)!.Invoke(window, new object?[] { 0, (uint)0x70, true })!;
+            await WaitUntil(() => Field<TextBlock>(window, "status").Text.Contains("秒后开始"), "library hotkey countdown");
+            if (!Settings().LibraryHotkeyPlays)
+                throw new Exception("Library hotkey countdown ran while the plays switch was off.");
+
+            await CloseWindow(window);
+            await playByHotkey.WaitAsync(TimeSpan.FromSeconds(5));
+            var saved = SettingsStore.Load(settingsPath, out var warning);
+            if (warning != null || saved.Library.Length != 1 || saved.Library[0].Path != firstScore ||
+                saved.Library[0].Hotkey != new HotkeyBinding(0x70) || !saved.LibraryHotkeyPlays)
+                throw new Exception("Library settings were not persisted.");
+            Console.WriteLine("PASS library UI: card, add, bind, conflict, hotkey load, plays switch, playback lock, remove, persist");
+        }
+        finally
+        {
+            if (window.IsVisible) await CloseWindow(window);
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject node)
     {
         foreach (object child in LogicalTreeHelper.GetChildren(node))
@@ -431,9 +590,11 @@ public static class WindowsSmokeTests
 sealed class TestScoreDialogs : IScoreDialogs
 {
     public string? OpenPath, SavePath, MidiPath;
+    public string[] LibraryPaths = Array.Empty<string>();
     public MessageBoxResult Answer = MessageBoxResult.No;
     public string? Open(Window owner) => OpenPath;
     public string? Save(Window owner, string suggestedName) => SavePath;
+    public string[] OpenLibrary(Window owner) => LibraryPaths;
     public MessageBoxResult Unsaved(Window owner) => Answer;
     public string? SaveMidi(Window owner, string suggestedName) => MidiPath;
     public void PlaybackIssue(Window owner, string message) => throw new Exception("Unexpected playback stop: " + message);

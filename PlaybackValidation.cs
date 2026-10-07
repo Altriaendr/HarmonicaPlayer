@@ -8,25 +8,26 @@ public static class PlaybackValidation
     public static int ParseBpm(string text)
     {
         if (!int.TryParse(text, out int bpm) || bpm is < 20 or > 300)
-            throw new FormatException("速度（BPM）范围20～300，请输入整数。");
+            throw new FormatException(Loc.T("速度（BPM）范围20～300，请输入整数。"));
         return bpm;
     }
 
     public static int ParseGap(string text)
     {
         if (!int.TryParse(text, out int silence) || silence is < 10 or > 5000)
-            throw new FormatException("音符间隔／留白须为10～5000毫秒的整数。");
+            throw new FormatException(Loc.T("音符间隔／留白须为10～5000毫秒的整数。"));
         return silence;
     }
 
     public static int ValidateGap(string text, IReadOnlyCollection<ScoreNote> notes, double beatMs)
     {
-        if (!double.IsFinite(beatMs) || beatMs <= 0) throw new FormatException("每拍时长无效。");
+        if (!double.IsFinite(beatMs) || beatMs <= 0) throw new FormatException(Loc.T("每拍时长无效。"));
         int silence = ParseGap(text);
         var shortNote = notes.FirstOrDefault(n => n.Degree != 0 && n.Beats * beatMs - silence - PreparationMs < 40);
         if (shortNote != null)
             throw new ScoreFormatException(shortNote.Position,
-                $"第{shortNote.Position + 1}个字符的音过短：扣除{PreparationMs}ms准备和{silence}ms留白后不足40ms。请降低BPM或减小音符间隔。");
+                Loc.F("第{0}个字符的音过短：扣除{1}ms准备和{2}ms留白后不足40ms。请降低BPM或减小音符间隔。",
+                    shortNote.Position + 1, PreparationMs, silence));
         return silence;
     }
 }

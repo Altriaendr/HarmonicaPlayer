@@ -21,9 +21,9 @@ try {
     $version = '0.4.0'
     $buildStamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
     $outputDir = Join-Path $PSScriptRoot "bin\Release\publish-$version-$buildStamp"
-    dotnet publish .\HarmonicaPlayer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $outputDir
+    dotnet publish .\HarpKit.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $outputDir
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed. ZIP was not created.' }
-    if (!(Test-Path (Join-Path $outputDir 'HarmonicaPlayer.exe'))) { throw 'EXE missing.' }
+    if (!(Test-Path (Join-Path $outputDir 'HarpKit.exe'))) { throw 'EXE missing.' }
 
     Copy-Item .\rhythm-demo.txt $outputDir
     Copy-Item .\score-format-demo.txt $outputDir
@@ -33,6 +33,7 @@ try {
     Copy-Item .\Assets\Harmonica\LICENSE-CC0.txt $outputDir
     Copy-Item .\UPDATE-0.4.0.md $outputDir
     Copy-Item .\VALIDATION-0.4.0.md $outputDir
+    Copy-Item .\UI-REFRESH.md $outputDir
     Copy-Item .\README.md $outputDir
     Copy-Item .\AudioExamples $outputDir -Recurse
     Copy-Item -LiteralPath .\ai转谱模板.txt -Destination $outputDir
@@ -52,7 +53,7 @@ try {
             Write-Warning '未找到简谱文件夹，本次仅打包内置示例谱。'
         }
     }
-    $zipPath = Join-Path $PSScriptRoot "bin\Release\HarmonicaPlayer-v$version-win-x64.zip"
+    $zipPath = Join-Path $PSScriptRoot "bin\Release\HarpKit-v$version-win-x64.zip"
     Compress-Archive -Path (Join-Path $outputDir '*') -DestinationPath $zipPath -Force
     Write-Host "OUTPUT: $outputDir"
     Write-Host "ZIP: $zipPath"
