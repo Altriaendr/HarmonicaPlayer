@@ -268,11 +268,11 @@ MIDI 应保留可从谱面得到的主要信息：
 
 Codex 第一次扫描时必须确认实际命令。
 
-实际项目根目录是 HarmonicaPlayer.csproj 所在目录（当前本机为 D:\codex\HarmonicaPlayer\HarmonicaPlayer），没有 .sln。以下命令均从该目录执行：
+实际项目根目录是 HarpKit.csproj 所在目录（产品更名前为 HarmonicaPlayer.csproj；当前本机为 D:\HarmonicaPlayer），没有 .sln。以下命令均从该目录执行：
 
 ```powershell
-dotnet restore .\HarmonicaPlayer.csproj
-dotnet build .\HarmonicaPlayer.csproj -c Release
+dotnet restore .\HarpKit.csproj
+dotnet build .\HarpKit.csproj -c Release
 dotnet run --project .\Tests\ParserTests.csproj -c Release
 dotnet build .\Tests\WindowsSmoke\WindowsSmokeTests.csproj -c Release
 # 仅在允许创建窗口、注册热键的 Windows 桌面验收时执行：
@@ -428,3 +428,14 @@ git status
 - 软件版本统一为0.4.0并移除窗口开发标记；本轮只后台检查、编译、打包及GitHub发布，不重跑窗口、声音、输入或游戏。
 - 本次发布包不包含简谱文件夹。本地简谱新增、删除、重命名不纳入发布提交；远端已存在的历史曲谱不删改。只保留软件格式示例。
 - 完整结果见VALIDATION-0.4.0.md。维护者反馈只按实际原话记录，不扩写成逐项自动验收。保留旧验证文档及旧发布标签。
+
+## HarpKit 更名与浮窗增量（2026-10-07）
+
+- 维护者要求：产品改名 HarpKit、主界面改为 4:3 浮窗、曲谱库不再被压缩到需要手滑、整体排版与风格统一、增加中英界面切换、给一个 SVG 图标。本轮只做界面与命名，业务流程（解析/演奏/热键/试听/MIDI/配置语义）未改。
+- 产品名：`HarpKit.csproj`（`AssemblyName`/`Product`/`AssemblyTitle` = HarpKit，产物 `HarpKit.exe`）、窗口与任务栏标题、单实例提示、`Build-Release.ps1`（zip 名 `HarpKit-v<version>-win-x64.zip`）。**C# 命名空间仍为 `HarmonicaPlayer`**，曲谱文件头 `@format=HarmonicaPlayer/1` 与全部曲谱语法不变；不做全仓命名空间重命名。
+- 数据目录：`SettingsStore.DefaultPath` → `%LOCALAPPDATA%\HarpKit\settings.json`，旧路径保留为 `LegacyPath`；`MigrateLegacySettings()` 只在正式启动路径（`SingleInstance.Run`）调用，且只在新文件不存在、旧文件存在时**复制**，不删除/改写旧文件；测试注入临时路径时不触发迁移。
+- 界面：`WindowStyle=None` + `WindowChrome`（可边缘缩放，Win11 走 DWM 圆角），默认 1040×780（正好 4:3）、最小 880×660，**不强制锁定比例**；新增 `PlayerWindow.Shell.cs`（标题栏/状态区/选项卡/底部播放条与语言切换）；主题新增资源键 `TitleBar`/`IconButton`/`Tab`/`TabItem`；右栏为 `TabControl`（曲谱库独占整列高度：列表 `MinHeight=140`、无 `MaxHeight`）。
+- 界面语言：`Loc.cs` 以**中文原文为键**查英文表，缺项原样回退中文；默认中文输出与改动前逐字一致（既有中文断言不受影响）。设置新增可选字段 `Language`（zh/en，非法值回退中文，`SettingsStore.ReadLanguage` 只读预读）。英文覆盖标题栏/选项卡/主界面文案/对话框/设置与快捷键/曲谱库校验提示；`ScoreParser`、`MidiImporter` 问题条目、音频设备错误细节、日志谱面注记仍为中文（回退显示）。
+- 图标：`Assets/Icon/harpkit.svg` 是设计源，`UiIcon.cs` 用逐字相同的 path 做 WPF 矢量渲染（标题栏 Logo 与窗口/任务栏图标），`Tools/IconGen` 生成 `Assets/Icon/harpkit.ico`（9 尺寸，PNG-in-ICO）供 `<ApplicationIcon>`；`Tools/**` 已从主工程编译中排除，`UiIcon.Validate()` 校验几何。
+- 验证：主工程与两个测试工程 Release 编译 0 警告 0 错误；核心测试全部 PASS（新增语言与数据目录检查）；WindowsSmoke **12 组**全部 PASS（新增 `shell UI`：4:3、图标、选项卡、曲谱库列表高度、语言切换与持久化）。窗口交互、热键占用、声音与游戏内行为仍需维护者实机验收，清单见 `UI-REFRESH.md` 第十五节。
+- 版本号仍为 `0.4.0`（窗口标题的版本取程序集，单一来源）；升版、打包与发布仍由维护者统一决定。

@@ -1,4 +1,10 @@
-# HarmonicaPlayer 项目上下文
+# HarpKit（原 HarmonicaPlayer）项目上下文
+
+> 2026-10-07 起产品名改为 **HarpKit**：项目文件 `HarpKit.csproj`、产物 `HarpKit.exe`、窗口与任务栏标题、数据目录 `%LOCALAPPDATA%\HarpKit`（旧目录仅在首次启动时复制迁移）。
+> **C# 命名空间仍是 `HarmonicaPlayer`**，曲谱文件头 `@format=HarmonicaPlayer/1` 与所有曲谱语法不变。
+> 本文档中出现的 "HarmonicaPlayer" 若指命名空间、曲谱格式头、历史发布/验证文档或旧数据目录，仍然有效。
+> 界面轮次的增量（双主题、4:3 浮窗、选项卡、中英切换、图标）见仓库根的 `UI-REFRESH.md`。
+
 
 ## 1. 项目定位
 
