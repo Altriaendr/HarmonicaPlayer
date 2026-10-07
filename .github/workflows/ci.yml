@@ -1,0 +1,42 @@
+name: build-and-test
+
+on:
+  push:
+    branches: [main, "feature/**", "fix/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: 构建与核心检查（Windows / .NET 8）
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: 构建主程序（要求 0 警告 0 错误）
+        run: dotnet build .\HarpKit.csproj -c Release
+
+      - name: 构建并运行核心检查
+        shell: pwsh
+        run: |
+          dotnet build .\Tests\ParserTests.csproj -c Release
+          dotnet run --project .\Tests\ParserTests.csproj -c Release --no-build
+
+      - name: WindowsSmoke 仅编译
+        # 该测试会创建窗口并注册全局热键，不适合在 CI 运行；实机验收由维护者执行。
+        run: dotnet build .\Tests\WindowsSmoke\WindowsSmokeTests.csproj -c Release

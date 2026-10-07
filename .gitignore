@@ -1,5 +1,35 @@
-﻿bin/
+﻿# 构建与打包产物
+bin/
 obj/
+publish/
+artifacts/
+*.zip
+*.sha256
+
+# 开发环境与 IDE
 .vs/
+.vscode/
+.idea/
 *.user
 *.suo
+*.userprefs
+*.ncrunchproject
+*.sln.docstates
+
+# 测试与临时输出
+TestResults/
+*.trx
+*.log
+*.tmp
+*.bak
+~$*
+
+# 操作系统杂项
+Thumbs.db
+Desktop.ini
+.DS_Store
+desktop.ini
+
+# 本机私人内容：曲谱与设置默认不入库。
+# 上游已跟踪的 简谱/ 示例保持入库；如需新增自己的曲谱，请显式 git add。
+# 简谱/*.txt 之外的私人曲谱请放在仓库外。

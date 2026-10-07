@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞（私有上报）
+    url: https://github.com/
+    about: 请按 SECURITY.md 私下上报，不要在公开 Issue 中贴出复现细节
+  - name: 上游项目（原作者）
+    url: https://github.com/lanselanlanxi-wq/HarmonicaPlayer
+    about: 本仓库是上游的派生版本；若问题在上游 v0.4.0 同样存在，请优先反馈给上游

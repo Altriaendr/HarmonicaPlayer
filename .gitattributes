@@ -1,0 +1,29 @@
+# 行尾与文本处理：本仓库统一 LF（与现有源码一致，避免行尾噪音）
+# 注意：不要删除 使用说明.txt / Build-Release.ps1 的 UTF-8 BOM（Windows PowerShell 5.1 中文兼容所需）。
+* text=auto eol=lf
+
+# 源码与文档
+*.cs       text eol=lf
+*.csproj   text eol=lf
+*.ps1      text eol=lf
+*.md       text eol=lf
+*.txt      text eol=lf
+*.json     text eol=lf
+*.svg      text eol=lf
+*.csv      text eol=lf
+
+# 二进制素材：不做行尾转换、不尝试 diff
+*.wav      binary
+*.ico      binary
+*.png      binary
+*.jpg      binary
+*.gif      binary
+*.exe      binary
+*.dll      binary
+*.zip      binary
+*.sha256   binary
+
+# 语言统计辅助
+*.cs       linguist-language=C#
+*.txt      linguist-documentation
+*.md       linguist-documentation
