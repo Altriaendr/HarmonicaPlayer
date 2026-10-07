@@ -1,16 +1,16 @@
-# HarpKit v0.4.0（原 HarmonicaPlayer）
+# HarpKit v0.5.0（原 HarmonicaPlayer）
 
 Windows 单音简谱播放器：编辑和保存 TXT、本地声音试听、导出标准 MIDI，以及通过模拟键鼠在游戏内演奏。
 
 > **本仓库说明（派生版）**：本仓库是 [lanselanlanxi-wq/HarmonicaPlayer](https://github.com/lanselanlanxi-wq/HarmonicaPlayer) 的**非官方派生版本**，基线为上游 `main` 的提交 `a24e6565ef01ba3fdad7ae21afd2b442c0df29d3`（即上游已发布的 v0.4.0 源码）。
-> 本分支在其之上加入了**曲谱库与每曲快捷键**、**界面改版**（4:3 无边框浮窗、选项卡式右栏、中英双语、矢量图标）与**项目更名 HarpKit**；这些改动**尚未经实机验收、未升版本号、未发布发行包**。
+> 本仓库在其之上加入了**曲谱库与每曲快捷键**、**界面改版**（4:3 无边框浮窗、选项卡式右栏、中英双语、矢量图标）与**项目更名 HarpKit**；这些改动已升版为 **v0.5.0** 并发布发行包，但**尚未经维护者实机（游戏内按键、声音）验收**。
 > 上游**没有提供开源许可**，因此本仓库不授予任何许可（No license granted）；署名、免责与第三方素材见 [ATTRIBUTION.md](ATTRIBUTION.md)。参与开发见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题见 [SECURITY.md](SECURITY.md)。
 
-当前版本为v0.4.0（2026-10-04）。维护者已确认实机测试完毕并授权发布；自动检查、构建与验收边界见[VALIDATION-0.4.0.md](VALIDATION-0.4.0.md)，更新内容见[UPDATE-0.4.0.md](UPDATE-0.4.0.md)。
+当前版本为HarpKit v0.5.0（2026-10-07），已统一版本号、已打包并发布 GitHub Release。上游基线 v0.4.0 的自动检查与验收边界见[VALIDATION-0.4.0.md](VALIDATION-0.4.0.md)、更新内容见[UPDATE-0.4.0.md](UPDATE-0.4.0.md)；本版更新内容见[UPDATE-0.5.0.md](UPDATE-0.5.0.md)，本轮证据与仍需实机确认的边界见[VALIDATION-0.5.0.md](VALIDATION-0.5.0.md)。
 
-下一版本v0.5.0的“曲谱库：每首曲子可以绑一个自己的快捷键”已在源码中实现，并通过本轮后台全量检查（含曲谱库56项）与WindowsSmoke 11组窗口检查；**尚未升版、未打包**（csproj仍为0.4.0），待维护者实机验收后再统一更新版本号并发布，更新内容见[UPDATE-0.5.0.md](UPDATE-0.5.0.md)，本轮证据与待验收边界见[VALIDATION-0.5.0.md](VALIDATION-0.5.0.md)。
+本版“曲谱库：每首曲子可以绑一个自己的快捷键”与界面改版、产品更名已随 HarpKit v0.5.0 一并发布，并通过全量核心检查（含曲谱库56项）与WindowsSmoke窗口检查；**本轮未重跑游戏内输入、声音与窗口交互，维护者实机验收仍需另行确认**。
 
-## v0.5.0 更新（本地增量，待维护者实机验收后升版打包）
+## v0.5.0 更新（已发布；游戏内实机验收待维护者确认）
 
 本次新增“曲谱库：每首曲子可以绑一个自己的快捷键”。曲谱库只登记“TXT 文件 + 显示名 + 快捷键”，不改曲谱语法、文件头、BPM、间隔、试听、MIDI 和游戏时间线。
 
@@ -27,9 +27,9 @@ Windows 单音简谱播放器：编辑和保存 TXT、本地声音试听、导�
 dotnet run --project .\Tests\ParserTests.csproj -c Release -- --score-library-only
 ~~~
 
-本轮核心入口全量通过（其中曲谱库56项），WindowsSmoke 11组全部PASS，两个测试工程Release编译0警告0错误；详细命令、实际输出与“仍需人工实机确认”的边界见[VALIDATION-0.5.0.md](VALIDATION-0.5.0.md)。
+本轮核心入口全量通过（其中曲谱库56项），WindowsSmoke **12组全部PASS**（含界面改版新增的 `shell UI` 组；该组原有的“列表高度 ≥200px”阈值在默认尺寸下不成立，已改为“不低于 MinHeight 且随窗口高度增长”的断言，复核见[VALIDATION-0.5.0.md](VALIDATION-0.5.0.md)末节），两个测试工程Release编译0警告0错误；详细命令、实际输出与“仍需人工实机确认”的边界见[VALIDATION-0.5.0.md](VALIDATION-0.5.0.md)。
 
-## v0.5.0 界面增量（本地增量，待维护者实机验收后升版）
+## v0.5.0 界面增量（已随 v0.5.0 发布；实机验收待维护者确认）
 
 主界面重做为“顶栏状态 + 左编辑右曲谱库 + 底部固定播放条”的紧凑控制台布局，整页不再长滚动；新增浅色/深色双主题，默认跟随 Windows“个性化 → 颜色”并实时跟随，也可在设置里固定为浅色或深色（切换不重启、会被记住）。所有颜色改为语义 token（`UiPalette.cs` 里两套调色板），并去掉了进度条渐变与卡片投影，统一字号阶梯与 8pt 间距；热键录入框增加“录制中／冲突”视觉，按钮、输入框、勾选框、滑杆补齐键盘焦点态。
 
@@ -37,7 +37,7 @@ dotnet run --project .\Tests\ParserTests.csproj -c Release -- --score-library-on
 - 设置文件只新增一个**可选**字段 `Theme`（system/light/dark）：旧配置照常读取，未知值只按“跟随系统”处理，不会让整份设置失效。
 - 不改变曲谱语法、快捷键注册与执行、游戏输入、试听、MIDI 与文件格式；所有界面元素沿用原有字段与事件。
 
-## HarpKit 浮窗与双语增量（本地增量，未升版）
+## HarpKit 浮窗与双语增量（已随 v0.5.0 发布）
 
 产品更名为 **HarpKit**（exe、窗口标题栏、任务栏与图标；C# 命名空间仍是 `HarmonicaPlayer`，曲谱格式头 `@format=HarmonicaPlayer/1` 不变），主界面改为 **4:3 无边框浮窗**，右栏改为 **选项卡**（曲谱库独占整列高度，一屏不再被压缩），并新增 **中文／English 界面切换** 与 **矢量图标**。
 
@@ -46,6 +46,7 @@ dotnet run --project .\Tests\ParserTests.csproj -c Release -- --score-library-on
 - 语言：标题栏“界面语言”下拉框，切换立即生效并被记住；设置文件新增**可选**字段 `Language`（zh/en），非法值只回退中文，不影响其他设置。英文覆盖全部界面文案与设置/快捷键/曲谱库校验提示；曲谱解析、MIDI 转换问题条目与音频设备错误的具体措辞暂时保持中文（回退显示）。
 - 图标：`Assets/Icon/harpkit.svg` 是设计源，`UiIcon.cs` 用同一份矢量几何渲染标题栏与窗口图标，`Assets/Icon/harpkit.ico`（EXE 图标）由 `Tools/IconGen` 生成，重建命令见 `Tools/IconGen/README.md`。
 - 构建命令随项目文件改名：`dotnet build .\HarpKit.csproj -c Release`。
+- 已知限制：英文界面下卡片内文案更长，默认 1040×780 时曲谱库列表约 4 行；把窗口拉高可恢复中文下的完整高度，英文下会停在列表的最小高度。实测与说明见 [UI-REFRESH.md](UI-REFRESH.md) 第十六节、[VALIDATION-0.5.0.md](VALIDATION-0.5.0.md) 末节。
 - 不改变曲谱语法、快捷键注册与执行、游戏输入、试听、MIDI 与文件格式。
 
 ## v0.4.0 更新
@@ -167,7 +168,7 @@ dotnet run --project .\Tests\WindowsSmoke\WindowsSmokeTests.csproj -c Release
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Release.ps1
 ```
 
-脚本在检查失败时停止，生成bin\Release\HarpKit-v0.4.0-win-x64.zip（含 HarpKit.exe 自包含程序、说明、模板和内置示例）。本次发行包不包含“简谱”文件夹；默认打包行为也是如此，仅明确传入-IncludeScores时才附带本机TXT曲谱。
+脚本在检查失败时停止，生成bin\Release\HarpKit-v0.5.0-win-x64.zip（含 HarpKit.exe 自包含程序、说明、模板和内置示例）。本次发行包不包含“简谱”文件夹；默认打包行为也是如此，仅明确传入-IncludeScores时才附带本机TXT曲谱。
 
 测试项目是自定义控制台检查，不能用 `dotnet test` 替代。核心入口可后台运行；WindowsSmoke 会创建窗口并注册全局热键，必须避开游戏期间。它使用日志播放和音频替身，不验证真实音频或游戏输入。修改游戏调度、快捷键或取消逻辑后，需要重新验收对应的实机行为，不能沿用旧版结果。
 

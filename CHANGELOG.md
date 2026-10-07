@@ -6,9 +6,9 @@
 > `v0.1.1`～`v0.4.0` 的记录来自上游的 `UPDATE-*.md` / `RELEASE-*.md`，其 tag 与提交完整保留在本仓库的 git 历史中；上游未记录发布日期的版本在此标注“日期未记录”。
 > 上游没有开源许可，许可与署名状态见 [ATTRIBUTION.md](ATTRIBUTION.md)。
 
-## [未发布] 派生版增量（源码已实现，未升版、未打包、未实机验收）
+## [v0.5.0] - 2026-10-07（已发布发行包；维护者实机验收待补）
 
-对应本仓库 `UPDATE-0.5.0.md`、`UI-REFRESH.md`、`VALIDATION-0.5.0.md`。
+对应本仓库 `UPDATE-0.5.0.md`、`UI-REFRESH.md`、`VALIDATION-0.5.0.md`。本版已统一版本号（`HarpKit.csproj` = 0.5.0，窗口标题取程序集版本这一单一来源）、打包 `HarpKit-v0.5.0-win-x64.zip` 并发布 GitHub Release；**本轮只做构建、自动化检查与打包发布，游戏内输入与声音等实机验收仍待维护者确认**。
 
 ### 新增
 

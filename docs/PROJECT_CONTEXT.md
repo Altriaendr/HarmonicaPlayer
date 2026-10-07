@@ -26,7 +26,7 @@ HarmonicaPlayer 是一个为《三角洲行动》口琴演奏场景制作的 Win
 
 当前正式版本基线为：
 
-**HarmonicaPlayer v0.4.0**
+**HarpKit v0.5.0**（派生自上游 HarmonicaPlayer v0.4.0）
 
 ---
 

@@ -10,9 +10,9 @@ HarmonicaPlayer 是一个面向《三角洲行动》口琴演奏场景的 Window
 - .NET 8
 - Windows 11
 - 目标平台以 Windows x64 为主
-- GitHub 仓库：`lanselanlanxi-wq/HarmonicaPlayer`
+- GitHub 仓库：`Altriaendr/HarmonicaPlayer`（本仓库，[lanselanlanxi-wq/HarmonicaPlayer](https://github.com/lanselanlanxi-wq/HarmonicaPlayer) 的派生版）
 
-当前正式版本基线：**v0.4.0**
+当前正式版本基线：**HarpKit v0.5.0**（派生自上游 HarmonicaPlayer v0.4.0，上游基线提交 `a24e6565ef01ba3fdad7ae21afd2b442c0df29d3`）
 
 Codex 在进行任何修改前，应先阅读：
 
@@ -438,4 +438,12 @@ git status
 - 界面语言：`Loc.cs` 以**中文原文为键**查英文表，缺项原样回退中文；默认中文输出与改动前逐字一致（既有中文断言不受影响）。设置新增可选字段 `Language`（zh/en，非法值回退中文，`SettingsStore.ReadLanguage` 只读预读）。英文覆盖标题栏/选项卡/主界面文案/对话框/设置与快捷键/曲谱库校验提示；`ScoreParser`、`MidiImporter` 问题条目、音频设备错误细节、日志谱面注记仍为中文（回退显示）。
 - 图标：`Assets/Icon/harpkit.svg` 是设计源，`UiIcon.cs` 用逐字相同的 path 做 WPF 矢量渲染（标题栏 Logo 与窗口/任务栏图标），`Tools/IconGen` 生成 `Assets/Icon/harpkit.ico`（9 尺寸，PNG-in-ICO）供 `<ApplicationIcon>`；`Tools/**` 已从主工程编译中排除，`UiIcon.Validate()` 校验几何。
 - 验证：主工程与两个测试工程 Release 编译 0 警告 0 错误；核心测试全部 PASS（新增语言与数据目录检查）；WindowsSmoke **12 组**全部 PASS（新增 `shell UI`：4:3、图标、选项卡、曲谱库列表高度、语言切换与持久化）。窗口交互、热键占用、声音与游戏内行为仍需维护者实机验收，清单见 `UI-REFRESH.md` 第十五节。
-- 版本号仍为 `0.4.0`（窗口标题的版本取程序集，单一来源）；升版、打包与发布仍由维护者统一决定。
+- 版本号当时仍为 `0.4.0`（窗口标题的版本取程序集，单一来源）；升版、打包与发布由维护者统一决定，本轮决定见下节。
+
+## v0.5.0发布授权与范围（2026-10-07）
+
+- 维护者明确要求：把派生分支合并进 `main`、统一升版 0.5.0、打包 `HarpKit-v0.5.0-win-x64.zip` 并发布 GitHub Release，同时授权更新仓库 About 描述。此前“等实机验收再升版”的条件由维护者本人放宽，不再重复索取许可。
+- 版本号统一为 0.5.0：`HarpKit.csproj` 的 `<Version>` 是唯一来源，窗口标题取 `Assembly.GetName().Version`，`Build-Release.ps1` 的 `$version` 与 zip 名同步；随包文档由 `UPDATE-0.4.0.md`/`VALIDATION-0.4.0.md` 换成 `UPDATE-0.5.0.md`/`VALIDATION-0.5.0.md`，并新增随包 `ATTRIBUTION.md`（上游无 LICENSE，发行包必须带署名与免责声明）。
+- 本次发布包不包含简谱文件夹；本地简谱的新增、删除、重命名不纳入发布提交，远端已存在的历史曲谱不删改。
+- 本轮只做构建、核心检查、自包含打包与发布，**不重跑游戏内输入、声音与窗口交互**；实机验收仍是待办，见 `VALIDATION-0.5.0.md`，不得把本轮结果写成实机通过。
+- 本仓库 `main` 已与 `upstream/main` 分叉，且跟踪 `origin/main`；同步上游改为手动：`git fetch upstream --tags` 后 `git merge upstream/main`，解决冲突再推送。

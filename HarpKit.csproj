@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Version>0.4.0</Version>
+    <Version>0.5.0</Version>
     <!-- 产品名：HarpKit（exe/任务栏/标题栏一致）；C# 命名空间保持 HarmonicaPlayer，避免无收益的全仓改名。 -->
     <AssemblyName>HarpKit</AssemblyName>
     <RootNamespace>HarmonicaPlayer</RootNamespace>

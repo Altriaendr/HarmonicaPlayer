@@ -158,11 +158,25 @@ public static class WindowsSmokeTests
             if (((TabItem)tabs.Items[0]!).Header is not TextBlock firstHeader || firstHeader.Text != "曲谱库")
                 throw new Exception("Score library must be the first tab");
             // 曲谱库列表占满整列高度：不再出现“显示不全还得手动滚动才能绑快捷键”。
+            // 判定不写死像素（原为 “>=200”，只在更大的窗口下成立）：列表在 * 行里，所以
+            // （1）不会被压到 MinHeight 以下，（2）窗口长高多少，列表就长高多少。
             var list = Field<ListBox>(window, "libraryList");
             await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
             list.UpdateLayout();
-            if (list.ActualHeight < 200)
-                throw new Exception("Library list does not fill the column: " + list.ActualHeight +
+            double libraryHeight = list.ActualHeight;
+            if (libraryHeight < list.MinHeight)
+                throw new Exception("Library list was squeezed below its minimum: " + libraryHeight +
+                    " | chain=" + Chain(list) + " | editor=" + Chain(Field<TextBox>(window, "score")));
+            const double growBy = 100;
+            window.Height += growBy; window.Width += growBy * 4.0 / 3.0;
+            await Task.Delay(120);
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+            list.UpdateLayout();
+            double libraryGrowth = list.ActualHeight - libraryHeight;
+            double libraryFilled = list.ActualHeight;
+            if (libraryGrowth < growBy * 0.6)
+                throw new Exception("Library list does not fill the column: grew only " + libraryGrowth + " of +" + growBy +
+                    " (" + libraryHeight + " -> " + list.ActualHeight + ")" +
                     " | chain=" + Chain(list) + " | editor=" + Chain(Field<TextBox>(window, "score")));
 
             var language = Field<ComboBox>(window, "languageChoice");
@@ -170,6 +184,15 @@ public static class WindowsSmokeTests
                 throw new Exception("Default language must be Chinese");
             language.SelectedIndex = 1;
             await WaitUntil(() => Field<Button>(window, "saveScore").Content.ToString() == "Save TXT", "English applied");
+            await Task.Delay(120);
+            // 诊断（不断言）：英文文案更长，记录它对曲谱库列表高度的影响（窗口尺寸一并记录）。
+            string englishSize = window.Width.ToString("0") + "x" + window.Height.ToString("0");
+            double englishHeight = list.ActualHeight;
+            string englishChain = Chain(list);
+            window.Width = 1040; window.Height = 780; // 英文 + 默认尺寸：曲谱库最紧凑的一档
+            await Task.Delay(120);
+            list.UpdateLayout();
+            double englishDefaultHeight = list.ActualHeight;
             if (((TabItem)tabs.Items[0]!).Header is not TextBlock englishHeader || englishHeader.Text != "Score library")
                 throw new Exception("Tab header did not switch to English");
             if (!Field<Button>(window, "start").Content.ToString()!.StartsWith("Start playing"))
@@ -179,7 +202,15 @@ public static class WindowsSmokeTests
             await WaitUntil(() => Field<Button>(window, "saveScore").Content.ToString() == "保存 TXT", "Chinese restored");
             if (!Field<Button>(window, "start").Content.ToString()!.StartsWith("开始演奏"))
                 throw new Exception("Start label was not restored to Chinese");
-            Console.WriteLine("PASS shell UI: 4:3 frameless window, icon, tabs, full-height library, language switch, persistence");
+            await Task.Delay(120);
+            list.UpdateLayout();
+            Console.WriteLine("PASS shell UI: 4:3 frameless window, icon, tabs, library list fills the column (" +
+                libraryHeight.ToString("0") + " -> " + libraryFilled.ToString("0") + " at +" + growBy +
+                "), language switch, persistence");
+            Console.WriteLine("  shell diagnostics: English at " + englishSize + " list " + englishHeight.ToString("0") +
+                ", English at default 1040x780 list " + englishDefaultHeight.ToString("0") +
+                ", Chinese at default 1040x780 list " + list.ActualHeight.ToString("0") +
+                " | English chain: " + englishChain);
         }
         finally
         {
